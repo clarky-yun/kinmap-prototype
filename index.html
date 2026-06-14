@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KinMap Village Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="left-rail">
+        <div class="brand">
+          <p class="eyebrow">Anthropology Prototype</p>
+          <h1>KinMap</h1>
+          <p class="subtitle">村落家谱与家屋关系原型</p>
+        </div>
+
+        <section class="panel project-panel">
+          <div class="panel-head">
+            <h2>项目</h2>
+            <span id="householdCount" class="metric"></span>
+          </div>
+          <div class="project-meta">
+            <div>
+              <span class="meta-label">地点</span>
+              <strong id="projectLocation">云岭村试验数据</strong>
+            </div>
+            <div>
+              <span class="meta-label">对象</span>
+              <strong id="projectScope">54 户 / 286 人</strong>
+            </div>
+          </div>
+          <p id="projectSummary" class="project-summary">一个用来整理村落家屋、父系谱系与母系女性网络的田野项目。</p>
+          <div class="project-actions">
+            <button id="openProjectBtn" class="tool-button" type="button">项目</button>
+            <button id="openEntryBtn" class="tool-button" type="button">录入</button>
+            <button id="openShareBtn" class="tool-button" type="button">分享</button>
+          </div>
+          <div class="stat-grid" id="statGrid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>视图模式</h2>
+          </div>
+          <div class="segmented" id="modeSwitch"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>图层</h2>
+          </div>
+          <div class="filter-list" id="layerFilters"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="entityListTitle">户列表</h2>
+            <button id="exportJsonBtn" class="ghost-button" type="button">导出 JSON</button>
+          </div>
+          <label class="search">
+            <span>搜索</span>
+            <input id="searchInput" type="search" placeholder="输入户名、房支、关键词" />
+          </label>
+          <div id="householdList" class="household-list"></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Village Overview</p>
+            <h2 id="viewTitle">家屋网络总览</h2>
+          </div>
+          <div class="toolbar">
+            <button id="fitViewBtn" class="tool-button" type="button">重置视图</button>
+            <button id="toggleNamesBtn" class="tool-button" type="button">切换成员标签</button>
+          </div>
+        </header>
+
+        <section class="canvas-panel">
+          <div class="canvas-legend" id="legend"></div>
+          <div class="canvas-tools">
+            <div class="canvas-hint">滚轮缩放，按住画布拖动平移</div>
+            <div class="zoom-controls">
+              <button id="zoomOutBtn" class="tool-button" type="button">缩小</button>
+              <button id="zoomInBtn" class="tool-button" type="button">放大</button>
+            </div>
+          </div>
+          <div class="canvas-frame">
+            <svg id="villageMap" viewBox="0 0 1600 980" aria-label="Village kinship map"></svg>
+            <div id="canvasFocusCard" class="canvas-focus-card"></div>
+          </div>
+          <div id="selectionStrip" class="selection-strip"></div>
+        </section>
+
+        <section class="notes-strip">
+          <div class="note-card">
+            <span class="note-label">原型重点</span>
+            <p>默认看“户与户”的关系，点开后才进入一户内部，避免 50 多户同时展开时画面失控。</p>
+          </div>
+          <div class="note-card">
+            <span class="note-label">可分享方向</span>
+            <p>后续可接在线存储、只读链接、匿名化导出与协作批注。</p>
+          </div>
+          <div class="note-card">
+            <span class="note-label">人类学维度</span>
+            <p>同一份资料可切换父系、母系与家屋视角，强调的是解释方式而不是仅仅画一棵树。</p>
+          </div>
+        </section>
+      </main>
+
+      <aside class="right-rail">
+        <section class="panel detail-panel">
+          <div class="panel-head">
+            <h2>户详情</h2>
+            <span id="selectedBadge" class="metric">未选择</span>
+          </div>
+          <div id="detailPane" class="detail-content"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>关系列表</h2>
+          </div>
+          <div id="relationPane" class="relation-list"></div>
+        </section>
+      </aside>
+    </div>
+
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <section class="modal-shell" aria-modal="true" role="dialog" aria-labelledby="modalTitle">
+        <header class="modal-head">
+          <div>
+            <p class="eyebrow">KinMap Control</p>
+            <h2 id="modalTitle">项目与录入</h2>
+          </div>
+          <button id="closeModalBtn" class="ghost-button" type="button">关闭</button>
+        </header>
+
+        <div class="modal-tabs" id="modalTabs">
+          <button class="segment-button active" type="button" data-modal-tab="project">项目</button>
+          <button class="segment-button" type="button" data-modal-tab="entry">录入</button>
+          <button class="segment-button" type="button" data-modal-tab="share">分享</button>
+        </div>
+
+        <div class="modal-body">
+          <section class="modal-section" data-modal-panel="project">
+            <form id="projectForm" class="form-grid">
+              <label class="field">
+                <span>项目名称</span>
+                <input id="projectNameInput" name="project_name" type="text" placeholder="例如：云岭村家屋项目" />
+              </label>
+              <label class="field">
+                <span>地点</span>
+                <input id="projectLocationInput" name="project_location" type="text" placeholder="例如：云南某村" />
+              </label>
+              <label class="field field-wide">
+                <span>摘要</span>
+                <textarea id="projectSummaryInput" name="project_summary" rows="4" placeholder="项目说明、田野阶段、匿名规则"></textarea>
+              </label>
+              <div class="form-actions field-wide">
+                <button class="tool-button" type="submit">保存项目</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="modal-section hidden" data-modal-panel="entry">
+            <div class="entry-grid">
+              <form id="householdForm" class="form-card">
+                <h3>新增家屋</h3>
+                <label class="field">
+                  <span>家屋名称</span>
+                  <input name="household_name" type="text" placeholder="例如：木家屋 55" required />
+                </label>
+                <label class="field">
+                  <span>片区</span>
+                  <select name="lane">
+                    <option>上寨</option>
+                    <option>中寨</option>
+                    <option>下寨</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>房支</span>
+                  <select name="branch">
+                    <option>长房</option>
+                    <option>二房</option>
+                    <option>三房</option>
+                    <option>旁支</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>类型</span>
+                  <select name="pattern">
+                    <option>分家户</option>
+                    <option>并居户</option>
+                    <option>迁入户</option>
+                    <option>守屋户</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>地区说明</span>
+                  <input name="region" type="text" placeholder="例如：河谷边" />
+                </label>
+                <label class="field field-wide">
+                  <span>备注</span>
+                  <textarea name="notes" rows="3" placeholder="关于这一户的田野备注"></textarea>
+                </label>
+                <div class="form-actions field-wide">
+                  <button class="tool-button" type="submit">新增家屋</button>
+                </div>
+              </form>
+
+              <form id="personForm" class="form-card">
+                <h3>新增成员</h3>
+                <label class="field">
+                  <span>所属家屋</span>
+                  <select id="personHouseholdSelect" name="household_id"></select>
+                </label>
+                <label class="field">
+                  <span>姓名</span>
+                  <input name="person_name" type="text" placeholder="例如：木母55" required />
+                </label>
+                <label class="field">
+                  <span>性别</span>
+                  <select name="gender">
+                    <option>女</option>
+                    <option>男</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>年龄</span>
+                  <input name="age" type="number" min="0" max="120" value="30" />
+                </label>
+                <label class="field">
+                  <span>身份</span>
+                  <input name="role" type="text" placeholder="例如：配偶 / 子代 / 户主" />
+                </label>
+                <label class="field field-wide">
+                  <span>备注</span>
+                  <textarea name="note" rows="3" placeholder="关于这个人的说明"></textarea>
+                </label>
+                <div class="form-actions field-wide">
+                  <button class="tool-button" type="submit">新增成员</button>
+                </div>
+              </form>
+
+              <form id="relationForm" class="form-card">
+                <h3>新增家屋关系</h3>
+                <label class="field">
+                  <span>起点家屋</span>
+                  <select id="relationFromSelect" name="from_id"></select>
+                </label>
+                <label class="field">
+                  <span>终点家屋</span>
+                  <select id="relationToSelect" name="to_id"></select>
+                </label>
+                <label class="field">
+                  <span>关系类型</span>
+                  <select name="relation_type">
+                    <option value="house">家屋关联</option>
+                    <option value="marriage">婚姻联盟</option>
+                    <option value="inheritance">承屋 / 继承</option>
+                    <option value="patrilineal">父系分家</option>
+                    <option value="adoption">收养 / 过继</option>
+                  </select>
+                </label>
+                <label class="field field-wide">
+                  <span>说明</span>
+                  <textarea name="relation_note" rows="3" placeholder="例如：某年分家，仍共祭祖屋"></textarea>
+                </label>
+                <div class="form-actions field-wide">
+                  <button class="tool-button" type="submit">新增关系</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="modal-section hidden" data-modal-panel="share">
+            <div class="share-grid">
+              <div class="form-card">
+                <h3>本地分享</h3>
+                <p class="share-copy">当前版本不依赖服务器，分享方式是导出 JSON 或复制一个只读链接。</p>
+                <div class="form-actions">
+                  <button id="modalExportBtn" class="tool-button" type="button">导出 JSON</button>
+                  <button id="copyShareLinkBtn" class="tool-button" type="button">复制链接</button>
+                </div>
+                <label class="field">
+                  <span>只读链接</span>
+                  <textarea id="shareLinkOutput" rows="4" readonly placeholder="点击“复制链接”后会在这里生成"></textarea>
+                </label>
+              </div>
+
+              <div class="form-card">
+                <h3>导入项目</h3>
+                <p class="share-copy">可以把别人导出的 `JSON` 文件直接导入到当前原型里。</p>
+                <label class="field">
+                  <span>项目文件</span>
+                  <input id="importFileInput" type="file" accept=".json,application/json" />
+                </label>
+                <div id="shareStatus" class="share-status">本地自动保存开启。</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
