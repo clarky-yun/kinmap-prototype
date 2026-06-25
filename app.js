@@ -403,6 +403,7 @@ const state = {
   query: "",
   showNames: false,
   suppressNextNodeClick: false,
+  selectedAreaId: data.areas[0]?.id ?? null,
   viewport: {
     scale: 1,
     x: 0,
@@ -495,7 +496,7 @@ function updateProjectCard() {
 }
 
 function refreshDerivedData() {
-  if (!Array.isArray(data.areas) || !data.areas.length) {
+  if (!Array.isArray(data.areas)) {
     data.areas = createDefaultAreas();
   }
   data.maternalData = buildMaternalData(data.households);
@@ -517,9 +518,10 @@ function applySerializedState(payload) {
   data.project = payload.project;
   data.households = payload.households;
   data.relations = payload.relations;
-  data.areas = Array.isArray(payload.areas) && payload.areas.length ? payload.areas : createDefaultAreas();
+  data.areas = Array.isArray(payload.areas) ? payload.areas : createDefaultAreas();
   refreshDerivedData();
   state.selectedEntityId = getDefaultSelectionForMode(state.mode);
+  state.selectedAreaId = data.areas[0]?.id ?? null;
 }
 
 function saveToLocal() {
@@ -827,6 +829,7 @@ function renderAreaControls() {
               <span>高</span>
               <input data-area-field="height" type="number" min="120" value="${Math.round(area.height)}" />
             </label>
+            <button class="area-delete-button" type="button" data-delete-area-id="${area.id}">删除</button>
           </div>
         `
       )
@@ -838,16 +841,17 @@ function renderAreaControls() {
       const card = input.closest("[data-area-control-id]");
       const area = data.areas.find((candidate) => candidate.id === card.dataset.areaControlId);
       if (!area) return;
-      const field = input.dataset.areaField;
-      if (field === "name" || field === "color") {
-        area[field] = input.value;
-      } else {
-        const minimum = field === "width" ? 160 : field === "height" ? 120 : 0;
-        const numericValue = Number(input.value);
-        area[field] = field === "x" || field === "y" ? numericValue || 0 : Math.max(minimum, numericValue || minimum);
-      }
+      updateAreaField(area, input.dataset.areaField, input.value);
       saveToLocal();
       renderMap();
+      renderCanvasFocusCard();
+    });
+  });
+
+  dom.areaControlList.querySelectorAll("[data-delete-area-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteArea(button.dataset.deleteAreaId);
+      persistAndRender("区域已删除。");
     });
   });
 }
@@ -1058,7 +1062,7 @@ function buildPatrilineLine(household) {
 }
 
 function renderHouseholdMemberGraph(household) {
-  const members = household.members.slice(0, 8);
+  const members = household.members;
   if (!members.length) {
     return `<div class="empty-state">这一户还没有录入成员。</div>`;
   }
@@ -1074,11 +1078,15 @@ function renderHouseholdMemberGraph(household) {
     { key: "children", y: 228, members: byRole.children },
   ];
   const positioned = new Map();
+  const maxRowCount = Math.max(2, ...rows.map((row) => row.members.length));
+  const graphWidth = Math.max(420, 84 + maxRowCount * 118);
+  const nodeWidth = 92;
+  const nodeHeight = 58;
 
   rows.forEach((row) => {
     const count = Math.max(1, row.members.length);
     row.members.forEach((member, index) => {
-      const x = 26 + ((index + 1) * (288 / (count + 1))) - 38;
+      const x = 56 + ((index + 1) * ((graphWidth - 112) / (count + 1))) - nodeWidth / 2;
       positioned.set(member.id, { ...member, x, y: row.y });
     });
   });
@@ -1094,7 +1102,7 @@ function renderHouseholdMemberGraph(household) {
     const end = to ? positioned.get(to.id) : null;
     if (!start || !end) return;
     relationLines.push(
-      `<line class="member-link ${className}" x1="${start.x + 38}" y1="${start.y + 28}" x2="${end.x + 38}" y2="${end.y + 28}" />`
+      `<line class="member-link ${className}" x1="${start.x + nodeWidth / 2}" y1="${start.y + nodeHeight / 2}" x2="${end.x + nodeWidth / 2}" y2="${end.y + nodeHeight / 2}" />`
     );
   }
 
@@ -1111,9 +1119,9 @@ function renderHouseholdMemberGraph(household) {
     .map(
       (member) => `
         <g class="member-node" transform="translate(${member.x}, ${member.y})">
-          <rect width="76" height="56" rx="12" />
-          <text x="38" y="22" text-anchor="middle">${member.name}</text>
-          <text x="38" y="42" text-anchor="middle">${member.gender} · ${member.role}</text>
+          <rect width="${nodeWidth}" height="${nodeHeight}" rx="12" />
+          <text x="${nodeWidth / 2}" y="22" text-anchor="middle">${shortenText(member.name, 7)}</text>
+          <text x="${nodeWidth / 2}" y="43" text-anchor="middle">${member.gender} · ${shortenText(member.role, 5)}</text>
         </g>
       `
     )
@@ -1121,13 +1129,15 @@ function renderHouseholdMemberGraph(household) {
 
   return `
     <div class="member-graph">
-      <svg viewBox="0 0 340 312" aria-label="${household.shortName} 户内成员关系图">
+      <div class="member-graph-scroll">
+      <svg viewBox="0 0 ${graphWidth} 312" style="min-width:${graphWidth}px;" aria-label="${household.shortName} 户内成员关系图">
         <text class="member-generation-label" x="10" y="24">祖辈</text>
         <text class="member-generation-label" x="10" y="120">父母辈</text>
         <text class="member-generation-label" x="10" y="216">子代</text>
         ${relationLines.join("")}
         ${nodes}
       </svg>
+      </div>
       <div class="member-graph-legend">
         <span><i class="legend-solid"></i>亲子</span>
         <span><i class="legend-marriage"></i>配偶</span>
@@ -1135,6 +1145,11 @@ function renderHouseholdMemberGraph(household) {
       </div>
     </div>
   `;
+}
+
+function shortenText(text, maxLength) {
+  const value = String(text ?? "");
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 }
 
 function buildHouseMapModel() {
@@ -1447,6 +1462,10 @@ function renderMap() {
     areaNode.addEventListener("pointerdown", (event) => {
       beginAreaDrag(event, areaNode.dataset.areaId);
     });
+    areaNode.addEventListener("click", () => {
+      state.selectedAreaId = areaNode.dataset.areaId;
+      renderCanvasFocusCard();
+    });
   });
 
   dom.map.querySelectorAll("[data-area-resize-id]").forEach((handle) => {
@@ -1608,6 +1627,59 @@ function renderCanvasFocusCard() {
   const selected = getCurrentEntity();
   const relationCount = getSelectedRelations().length;
 
+  if (state.mode === "house") {
+    const selectedArea = data.areas.find((area) => area.id === state.selectedAreaId) ?? data.areas[0];
+    dom.canvasFocusCard.innerHTML = `
+      <div class="canvas-card-section">
+        <strong>${selected.name}</strong>
+        <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员</span>
+        <span>${selected.pattern}</span>
+        <span>当前画布显示与这一户直接相关的 ${relationCount} 条关系</span>
+      </div>
+      <div class="canvas-card-section area-editor">
+        <div class="area-editor-head">
+          <strong>画布区域</strong>
+          <button class="mini-button" type="button" data-area-action="add">新增</button>
+        </div>
+        ${
+          selectedArea
+            ? `
+              <label>
+                <span>名称</span>
+                <input data-focus-area-field="name" type="text" value="${selectedArea.name}" />
+              </label>
+              <label>
+                <span>颜色</span>
+                <input data-focus-area-field="color" type="color" value="${selectedArea.color}" />
+              </label>
+              <div class="area-editor-grid">
+                <label>
+                  <span>X</span>
+                  <input data-focus-area-field="x" type="number" value="${Math.round(selectedArea.x)}" />
+                </label>
+                <label>
+                  <span>Y</span>
+                  <input data-focus-area-field="y" type="number" value="${Math.round(selectedArea.y)}" />
+                </label>
+                <label>
+                  <span>宽</span>
+                  <input data-focus-area-field="width" type="number" min="160" value="${Math.round(selectedArea.width)}" />
+                </label>
+                <label>
+                  <span>高</span>
+                  <input data-focus-area-field="height" type="number" min="120" value="${Math.round(selectedArea.height)}" />
+                </label>
+              </div>
+              <button class="mini-button danger" type="button" data-area-action="delete">删除区域</button>
+            `
+            : `<span>还没有区域。点击“新增”创建一个区域。</span>`
+        }
+      </div>
+    `;
+    bindCanvasAreaEditor(selectedArea);
+    return;
+  }
+
   if (state.mode === "matrilineal") {
     const birthHouse = getHouseholdById(selected.birthHouseId);
     const residenceHouse = getHouseholdById(selected.residenceHouseId);
@@ -1623,9 +1695,72 @@ function renderCanvasFocusCard() {
   dom.canvasFocusCard.innerHTML = `
     <strong>${selected.name}</strong>
     <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员</span>
-    <span>${state.mode === "patrilineal" ? `第 ${selected.generation} 代 · 父系链已高亮` : selected.pattern}</span>
+    <span>第 ${selected.generation} 代 · 父系链已高亮</span>
     <span>当前画布显示与这一户直接相关的 ${relationCount} 条关系</span>
   `;
+}
+
+function bindCanvasAreaEditor(selectedArea) {
+  dom.canvasFocusCard.querySelector("[data-area-action='add']")?.addEventListener("click", () => {
+    const area = createAreaNearViewport();
+    data.areas.push(area);
+    state.selectedAreaId = area.id;
+    persistAndRender(`已新增区域：${area.name}。`);
+  });
+
+  dom.canvasFocusCard.querySelector("[data-area-action='delete']")?.addEventListener("click", () => {
+    if (!selectedArea) return;
+    deleteArea(selectedArea.id);
+    persistAndRender("区域已删除。");
+  });
+
+  dom.canvasFocusCard.querySelectorAll("[data-focus-area-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      if (!selectedArea) return;
+      updateAreaField(selectedArea, input.dataset.focusAreaField, input.value);
+      saveToLocal();
+      renderAreaControls();
+      renderMap();
+    });
+  });
+}
+
+function createAreaNearViewport() {
+  const visibleLeft = (-state.viewport.x) / state.viewport.scale;
+  const visibleTop = (-state.viewport.y) / state.viewport.scale;
+  return {
+    id: getNextAreaId(),
+    name: `区域 ${data.areas.length + 1}`,
+    color: "#d7b46a",
+    x: Math.round(visibleLeft + 120),
+    y: Math.round(visibleTop + 120),
+    width: 520,
+    height: 280,
+  };
+}
+
+function updateAreaField(area, field, value) {
+  if (field === "name" || field === "color") {
+    area[field] = value;
+    return;
+  }
+  const numericValue = Number(value);
+  if (field === "width") {
+    area.width = Math.max(160, numericValue || 160);
+    return;
+  }
+  if (field === "height") {
+    area.height = Math.max(120, numericValue || 120);
+    return;
+  }
+  if (field === "x" || field === "y") {
+    area[field] = numericValue || 0;
+  }
+}
+
+function deleteArea(areaId) {
+  data.areas = data.areas.filter((area) => area.id !== areaId);
+  state.selectedAreaId = data.areas[0]?.id ?? null;
 }
 
 function clampScale(scale) {
@@ -1683,6 +1818,7 @@ function beginAreaDrag(event, areaId) {
   event.stopPropagation();
   const area = data.areas.find((candidate) => candidate.id === areaId);
   if (!area) return;
+  state.selectedAreaId = area.id;
   const point = getCanvasWorldPoint(event.clientX, event.clientY);
   state.dragging = {
     active: true,
@@ -1705,6 +1841,7 @@ function beginAreaResize(event, areaId) {
   event.stopPropagation();
   const area = data.areas.find((candidate) => candidate.id === areaId);
   if (!area) return;
+  state.selectedAreaId = area.id;
   const point = getCanvasWorldPoint(event.clientX, event.clientY);
   state.dragging = {
     active: true,
@@ -1971,6 +2108,7 @@ function handleAreaSubmit(event) {
     height: Math.max(120, Number(form.get("area_height")) || 280),
   };
   data.areas.push(area);
+  state.selectedAreaId = area.id;
   event.currentTarget.reset();
   persistAndRender(`已新增区域：${area.name}。`);
 }
