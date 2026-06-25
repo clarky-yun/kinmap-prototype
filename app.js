@@ -1,7 +1,7 @@
 const viewModes = [
   {
     id: "house",
-    label: "双系 / 家屋",
+    label: "非单系 / 家屋制",
     title: "家屋网络总览",
     focus: "家屋、婚姻联盟、分家与承屋权一起看",
     types: ["house", "marriage", "inheritance", "adoption"],
@@ -776,7 +776,9 @@ function renderLegend() {
       const meta = relationTypes[type];
       return `
         <span class="legend-item">
-          <span class="legend-swatch" style="background:${meta.color};"></span>
+          <svg class="legend-line" viewBox="0 0 54 12" aria-hidden="true">
+            <line x1="4" y1="6" x2="50" y2="6" style="stroke:${meta.color};stroke-dasharray:${meta.dash};" />
+          </svg>
           ${meta.label}
         </span>
       `;
@@ -871,6 +873,7 @@ function renderDetailPane() {
 
   const keyMembers = selected.members.slice(0, 6);
   const patrilineLine = buildPatrilineLine(selected);
+  const memberGraph = renderHouseholdMemberGraph(selected);
   dom.selectedBadge.textContent = selected.shortName;
 
   dom.detailPane.innerHTML = `
@@ -926,6 +929,11 @@ function renderDetailPane() {
           .join("")}
       </div>
     </div>
+
+    <div>
+      <span class="meta-label">户内成员关系</span>
+      ${memberGraph}
+    </div>
   `;
 }
 
@@ -965,6 +973,86 @@ function buildPatrilineLine(household) {
     current = current.patrilineOriginId ? getHouseholdById(current.patrilineOriginId) : null;
   }
   return line;
+}
+
+function renderHouseholdMemberGraph(household) {
+  const members = household.members.slice(0, 8);
+  if (!members.length) {
+    return `<div class="empty-state">这一户还没有录入成员。</div>`;
+  }
+
+  const byRole = {
+    elders: members.filter((member) => member.role.includes("祖")),
+    adults: members.filter((member) => member.role.includes("户主") || member.role.includes("配偶")),
+    children: members.filter((member) => member.role.includes("子") || member.role.includes("继承")),
+  };
+  const rows = [
+    { key: "elders", y: 36, members: byRole.elders },
+    { key: "adults", y: 132, members: byRole.adults },
+    { key: "children", y: 228, members: byRole.children },
+  ];
+  const positioned = new Map();
+
+  rows.forEach((row) => {
+    const count = Math.max(1, row.members.length);
+    row.members.forEach((member, index) => {
+      const x = 26 + ((index + 1) * (288 / (count + 1))) - 38;
+      positioned.set(member.id, { ...member, x, y: row.y });
+    });
+  });
+
+  const father = members.find((member) => member.role.includes("户主"));
+  const mother = members.find((member) => member.role.includes("配偶"));
+  const grandfather = byRole.elders.find((member) => member.gender === "男") ?? byRole.elders[0];
+  const grandmother = byRole.elders.find((member) => member.gender === "女") ?? byRole.elders[1];
+
+  const relationLines = [];
+  function addLine(from, to, className) {
+    const start = from ? positioned.get(from.id) : null;
+    const end = to ? positioned.get(to.id) : null;
+    if (!start || !end) return;
+    relationLines.push(
+      `<line class="member-link ${className}" x1="${start.x + 38}" y1="${start.y + 28}" x2="${end.x + 38}" y2="${end.y + 28}" />`
+    );
+  }
+
+  addLine(grandfather, grandmother, "couple");
+  addLine(father, mother, "couple");
+  if (father) addLine(grandfather, father, "parent");
+  if (father) addLine(grandmother, father, "parent");
+  byRole.children.forEach((child) => {
+    addLine(father, child, child.role.includes("继承") ? "inheritance" : "parent");
+    addLine(mother, child, "parent");
+  });
+
+  const nodes = Array.from(positioned.values())
+    .map(
+      (member) => `
+        <g class="member-node" transform="translate(${member.x}, ${member.y})">
+          <rect width="76" height="56" rx="12" />
+          <text x="38" y="22" text-anchor="middle">${member.name}</text>
+          <text x="38" y="42" text-anchor="middle">${member.gender} · ${member.role}</text>
+        </g>
+      `
+    )
+    .join("");
+
+  return `
+    <div class="member-graph">
+      <svg viewBox="0 0 340 312" aria-label="${household.shortName} 户内成员关系图">
+        <text class="member-generation-label" x="10" y="24">祖辈</text>
+        <text class="member-generation-label" x="10" y="120">父母辈</text>
+        <text class="member-generation-label" x="10" y="216">子代</text>
+        ${relationLines.join("")}
+        ${nodes}
+      </svg>
+      <div class="member-graph-legend">
+        <span><i class="legend-solid"></i>亲子</span>
+        <span><i class="legend-marriage"></i>配偶</span>
+        <span><i class="legend-inherit"></i>继承候选</span>
+      </div>
+    </div>
+  `;
 }
 
 function buildHouseMapModel() {
@@ -1163,22 +1251,34 @@ function renderMap() {
       const from = entities.find((entity) => entity.id === relation.from);
       const to = entities.find((entity) => entity.id === relation.to);
       const meta = relationTypes[relation.type];
-      const start = getNodeAnchor(from);
-      const end = getNodeAnchor(to);
+      const isDirectSelectedRelation = relation.from === selected.id || relation.to === selected.id;
+      const drawFrom =
+        state.mode === "house" && isDirectSelectedRelation
+          ? entities.find((entity) => entity.id === selected.id)
+          : from;
+      const drawTo =
+        state.mode === "house" && isDirectSelectedRelation
+          ? entities.find((entity) => entity.id === (relation.from === selected.id ? relation.to : relation.from))
+          : to;
+      const { start, end } = getEdgeAnchors(drawFrom, drawTo);
       const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
       const curveX = start.x + deltaX / 2;
-      const curveY = start.y < end.y ? Math.min(start.y, end.y) - 24 : start.y + 18;
+      const curveY = start.y + deltaY / 2 - Math.min(84, Math.max(24, Math.abs(deltaX) * 0.12));
       const isActive =
         state.mode === "patrilineal"
           ? selectedNeighborIds.has(relation.from) && selectedNeighborIds.has(relation.to)
           : relation.from === selected.id || relation.to === selected.id;
       const edgeClass = isActive ? "edge active" : selectedNeighborIds.size > 1 ? "edge recessed" : "edge related";
+      const markerId = ["inheritance", "adoption", "patrilineal", "motherChild", "marriageMove"].includes(relation.type)
+        ? `marker-${relation.type}`
+        : "";
 
       return `
         <g>
-          <path class="${edgeClass}" d="M ${start.x} ${start.y} Q ${curveX} ${curveY} ${end.x} ${end.y}" style="stroke:${meta.color};stroke-dasharray:${meta.dash};" />
-          <circle class="edge-dot" cx="${start.x}" cy="${start.y}" r="4.5" fill="${meta.color}" />
-          <circle class="edge-dot" cx="${end.x}" cy="${end.y}" r="4.5" fill="${meta.color}" />
+          <path class="${edgeClass}" d="M ${start.x} ${start.y} Q ${curveX} ${curveY} ${end.x} ${end.y}" style="stroke:${meta.color};stroke-dasharray:${meta.dash};${markerId ? `marker-end:url(#${markerId});` : ""}" />
+          <circle class="edge-dot edge-start" cx="${start.x}" cy="${start.y}" r="4.5" fill="${meta.color}" />
+          ${markerId ? "" : `<circle class="edge-dot" cx="${end.x}" cy="${end.y}" r="4.5" fill="${meta.color}" />`}
           ${isActive ? `<text class="edge-label" x="${curveX}" y="${curveY - 8}" text-anchor="middle">${meta.label}</text>` : ""}
         </g>
       `;
@@ -1200,6 +1300,7 @@ function renderMap() {
 
   dom.map.innerHTML = `
     <g id="mapViewport" transform="translate(${state.viewport.x} ${state.viewport.y}) scale(${state.viewport.scale})">
+      ${renderSvgMarkers()}
       ${buildGridMarkup(bounds)}
       ${laneMarkup}
       ${backgroundMarkup}
@@ -1226,6 +1327,12 @@ function renderHouseholdNode(entity, isSelected, isRelated, relationCount) {
     state.mode === "patrilineal"
       ? `第 ${entity.generation} 代 · ${entity.keyHouse ? "祖屋/承屋点" : entity.pattern}`
       : `${entity.memberCount} 位成员 · 点击查看`;
+  const bodyText = state.showNames
+    ? entity.members
+        .slice(0, 2)
+        .map((member, index) => `<text class="node-mini" x="18" y="${94 + index * 18}">${member.name}</text>`)
+        .join("")
+    : `<text class="node-mini" x="18" y="96">${previewText}</text>`;
 
   return `
     <g class="village-node ${isSelected ? "selected" : ""} ${isRelated ? "related" : ""}" data-node-id="${entity.id}" transform="translate(${entity.x}, ${entity.y})">
@@ -1235,15 +1342,7 @@ function renderHouseholdNode(entity, isSelected, isRelated, relationCount) {
       <text class="node-title" x="18" y="38">${entity.shortName}</text>
       <text class="node-meta" x="18" y="62">${entity.branch} · ${entity.lane}</text>
       <text class="node-relation-count" x="202" y="26" text-anchor="end">${relationCount} 条联系</text>
-      <text class="node-mini" x="18" y="96">${previewText}</text>
-      ${
-        state.showNames || isSelected
-          ? entity.members
-              .slice(0, 2)
-              .map((member, index) => `<text class="node-mini" x="18" y="${96 + index * 18}">${member.name}</text>`)
-              .join("")
-          : ""
-      }
+      ${bodyText}
     </g>
   `;
 }
@@ -1275,6 +1374,53 @@ function getNodeAnchor(entity) {
     return { x: entity.x + 100, y: entity.y + 58 };
   }
   return { x: entity.x + 110, y: entity.y + 44 };
+}
+
+function getNodeBox(entity) {
+  if (state.mode === "matrilineal") {
+    return { x: entity.x, y: entity.y, width: 200, height: 116 };
+  }
+  return { x: entity.x, y: entity.y, width: 220, height: 128 };
+}
+
+function getEdgeAnchors(from, to) {
+  const fromBox = getNodeBox(from);
+  const toBox = getNodeBox(to);
+  const fromCenter = { x: fromBox.x + fromBox.width / 2, y: fromBox.y + fromBox.height / 2 };
+  const toCenter = { x: toBox.x + toBox.width / 2, y: toBox.y + toBox.height / 2 };
+  const deltaX = toCenter.x - fromCenter.x;
+  const deltaY = toCenter.y - fromCenter.y;
+  const horizontal = Math.abs(deltaX) >= Math.abs(deltaY);
+
+  if (horizontal) {
+    return {
+      start: { x: deltaX >= 0 ? fromBox.x + fromBox.width : fromBox.x, y: fromCenter.y },
+      end: { x: deltaX >= 0 ? toBox.x : toBox.x + toBox.width, y: toCenter.y },
+    };
+  }
+
+  return {
+    start: { x: fromCenter.x, y: deltaY >= 0 ? fromBox.y + fromBox.height : fromBox.y },
+    end: { x: toCenter.x, y: deltaY >= 0 ? toBox.y : toBox.y + toBox.height },
+  };
+}
+
+function renderSvgMarkers() {
+  const directionalTypes = ["patrilineal", "inheritance", "adoption", "motherChild", "marriageMove"];
+  return `
+    <defs>
+      ${directionalTypes
+        .map((type) => {
+          const meta = relationTypes[type];
+          return `
+            <marker id="marker-${type}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="${meta.color}" />
+            </marker>
+          `;
+        })
+        .join("")}
+    </defs>
+  `;
 }
 
 function renderSelectionStrip() {
