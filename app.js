@@ -843,7 +843,8 @@ function renderAreaControls() {
         area[field] = input.value;
       } else {
         const minimum = field === "width" ? 160 : field === "height" ? 120 : 0;
-        area[field] = Math.max(minimum, Number(input.value) || minimum);
+        const numericValue = Number(input.value);
+        area[field] = field === "x" || field === "y" ? numericValue || 0 : Math.max(minimum, numericValue || minimum);
       }
       saveToLocal();
       renderMap();
@@ -1165,15 +1166,19 @@ function buildHouseMapModel() {
   const relations = getVisibleRelations().filter((relation) => entityIds.has(relation.from) && entityIds.has(relation.to));
   const areaBounds = data.areas.reduce(
     (bounds, area) => ({
-      width: Math.max(bounds.width, area.x + area.width + 120),
-      height: Math.max(bounds.height, area.y + area.height + 120),
+      minX: Math.min(bounds.minX, area.x - 120),
+      minY: Math.min(bounds.minY, area.y - 120),
+      maxX: Math.max(bounds.maxX, area.x + area.width + 120),
+      maxY: Math.max(bounds.maxY, area.y + area.height + 120),
     }),
-    { width: 1760, height: 1240 }
+    { minX: -1200, minY: -900, maxX: 2600, maxY: 2100 }
   );
   const nodeBounds = entities.reduce(
     (bounds, entity) => ({
-      width: Math.max(bounds.width, entity.x + 340),
-      height: Math.max(bounds.height, entity.y + 240),
+      minX: Math.min(bounds.minX, entity.x - 160),
+      minY: Math.min(bounds.minY, entity.y - 160),
+      maxX: Math.max(bounds.maxX, entity.x + 340),
+      maxY: Math.max(bounds.maxY, entity.y + 240),
     }),
     areaBounds
   );
@@ -1325,11 +1330,22 @@ function renderAreaMarkup() {
 
 function buildGridMarkup(bounds) {
   const lines = [];
-  for (let x = 0; x <= bounds.width; x += 120) {
-    lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${bounds.height}" class="canvas-grid-line ${x % 240 === 0 ? "major" : ""}" />`);
+  const visibleLeft = (-state.viewport.x) / state.viewport.scale;
+  const visibleTop = (-state.viewport.y) / state.viewport.scale;
+  const visibleRight = visibleLeft + CANVAS_VIEW.width / state.viewport.scale;
+  const visibleBottom = visibleTop + CANVAS_VIEW.height / state.viewport.scale;
+  const minX = Math.min(bounds.minX ?? 0, visibleLeft) - 720;
+  const minY = Math.min(bounds.minY ?? 0, visibleTop) - 720;
+  const maxX = Math.max(bounds.maxX ?? bounds.width ?? CANVAS_VIEW.width, visibleRight) + 720;
+  const maxY = Math.max(bounds.maxY ?? bounds.height ?? CANVAS_VIEW.height, visibleBottom) + 720;
+  const startX = Math.floor(minX / 120) * 120;
+  const startY = Math.floor(minY / 120) * 120;
+
+  for (let x = startX; x <= maxX; x += 120) {
+    lines.push(`<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" class="canvas-grid-line ${x % 240 === 0 ? "major" : ""}" />`);
   }
-  for (let y = 0; y <= bounds.height; y += 120) {
-    lines.push(`<line x1="0" y1="${y}" x2="${bounds.width}" y2="${y}" class="canvas-grid-line ${y % 240 === 0 ? "major" : ""}" />`);
+  for (let y = startY; y <= maxY; y += 120) {
+    lines.push(`<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" class="canvas-grid-line ${y % 240 === 0 ? "major" : ""}" />`);
   }
   return lines.join("");
 }
@@ -1493,17 +1509,21 @@ function renderMatrilinealNode(entity, isSelected, isRelated, relationCount) {
 }
 
 function getNodeAnchor(entity) {
+  const x = entity.mapX ?? entity.x;
+  const y = entity.mapY ?? entity.y;
   if (state.mode === "matrilineal") {
-    return { x: entity.x + 100, y: entity.y + 58 };
+    return { x: x + 100, y: y + 58 };
   }
-  return { x: entity.x + 110, y: entity.y + 44 };
+  return { x: x + 110, y: y + 44 };
 }
 
 function getNodeBox(entity) {
+  const x = entity.mapX ?? entity.x;
+  const y = entity.mapY ?? entity.y;
   if (state.mode === "matrilineal") {
-    return { x: entity.x, y: entity.y, width: 200, height: 116 };
+    return { x, y, width: 200, height: 116 };
   }
-  return { x: entity.x, y: entity.y, width: 220, height: 128 };
+  return { x, y, width: 220, height: 128 };
 }
 
 function getEdgeAnchors(from, to) {
@@ -1609,7 +1629,7 @@ function renderCanvasFocusCard() {
 }
 
 function clampScale(scale) {
-  return Math.max(0.55, Math.min(2.4, scale));
+  return Math.max(0.18, Math.min(3.2, scale));
 }
 
 function zoomAtPoint(nextScale, clientX, clientY) {
@@ -1714,8 +1734,8 @@ function updateCanvasDrag(event) {
   if (state.dragging.type === "household") {
     const household = getHouseholdById(state.dragging.targetId);
     if (!household) return true;
-    household.mapX = Math.max(0, state.dragging.originX + deltaX);
-    household.mapY = Math.max(0, state.dragging.originY + deltaY);
+    household.mapX = state.dragging.originX + deltaX;
+    household.mapY = state.dragging.originY + deltaY;
     renderMap();
     return true;
   }
@@ -1723,8 +1743,8 @@ function updateCanvasDrag(event) {
   if (state.dragging.type === "area") {
     const area = data.areas.find((candidate) => candidate.id === state.dragging.targetId);
     if (!area) return true;
-    area.x = Math.max(0, state.dragging.originX + deltaX);
-    area.y = Math.max(0, state.dragging.originY + deltaY);
+    area.x = state.dragging.originX + deltaX;
+    area.y = state.dragging.originY + deltaY;
     renderMap();
     return true;
   }
@@ -1945,8 +1965,8 @@ function handleAreaSubmit(event) {
     id: getNextAreaId(),
     name: form.get("area_name").toString().trim(),
     color: form.get("area_color").toString() || "#d7b46a",
-    x: Math.max(0, Number(form.get("area_x")) || 120),
-    y: Math.max(0, Number(form.get("area_y")) || 120),
+    x: Number(form.get("area_x")) || 120,
+    y: Number(form.get("area_y")) || 120,
     width: Math.max(160, Number(form.get("area_width")) || 520),
     height: Math.max(120, Number(form.get("area_height")) || 280),
   };
