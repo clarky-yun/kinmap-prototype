@@ -1197,7 +1197,7 @@ function renderHouseholdMemberGraph(household) {
   return `
     <div class="member-graph">
       <div class="member-graph-scroll">
-      <svg viewBox="0 0 ${graphWidth} 312" style="min-width:${graphWidth}px;" aria-label="${household.shortName} 户内成员关系图">
+      <svg viewBox="0 0 ${graphWidth} 312" width="${graphWidth}" aria-label="${household.shortName} 户内成员关系图">
         <text class="member-generation-label" x="10" y="24">祖辈</text>
         <text class="member-generation-label" x="10" y="120">父母辈</text>
         <text class="member-generation-label" x="10" y="216">子代</text>

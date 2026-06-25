@@ -56,6 +56,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+.right-rail .panel {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.right-rail .panel * {
+  max-width: 100%;
 }
 
 .brand,
@@ -130,6 +140,7 @@ body {
 .topbar {
   justify-content: space-between;
   align-items: center;
+  min-width: 0;
 }
 
 .panel-head h2,
@@ -139,6 +150,7 @@ body {
 }
 
 .metric {
+  flex: 0 0 auto;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -790,6 +802,7 @@ body {
 
 .detail-panel {
   flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .detail-panel.flash {
@@ -802,6 +815,8 @@ body {
   display: grid;
   gap: 14px;
   margin-top: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .detail-hero {
@@ -809,6 +824,9 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(105, 87, 67, 0.1);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .detail-title {
@@ -821,6 +839,7 @@ body {
   margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .tag-row,
@@ -828,6 +847,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .tag {
@@ -839,8 +859,8 @@ body {
 }
 
 .member-card {
-  flex: 1 1 calc(50% - 8px);
-  min-width: 130px;
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 12px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
@@ -857,6 +877,7 @@ body {
   color: var(--muted);
   line-height: 1.45;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .member-graph {
@@ -865,15 +886,19 @@ body {
   border: 1px solid rgba(105, 87, 67, 0.12);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.56);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .member-graph svg {
   display: block;
-  width: 100%;
+  max-width: none;
   height: auto;
 }
 
 .member-graph-scroll {
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 6px;
@@ -881,6 +906,7 @@ body {
 
 .member-graph-scroll svg {
   width: auto;
+  max-width: none;
 }
 
 .member-generation-label {
