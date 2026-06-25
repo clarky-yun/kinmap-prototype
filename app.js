@@ -47,6 +47,14 @@ const branchNames = ["长房", "二房", "三房", "旁支"];
 const housePatterns = ["分家户", "并居户", "迁入户", "守屋户"];
 const surnames = ["木", "和", "李", "周", "杨", "赵"];
 
+function createDefaultAreas() {
+  return [
+    { id: "A1", name: "上寨", x: 60, y: 72, width: 1620, height: 300, color: "#d7b46a" },
+    { id: "A2", name: "中寨", x: 60, y: 432, width: 1620, height: 300, color: "#9fb36a" },
+    { id: "A3", name: "下寨", x: 60, y: 792, width: 1620, height: 300, color: "#7aa7a0" },
+  ];
+}
+
 function createVillageData() {
   const households = [];
   const relations = [];
@@ -240,6 +248,7 @@ function createVillageData() {
     },
     households,
     relations,
+    areas: createDefaultAreas(),
     maternalData,
   };
 }
@@ -393,6 +402,7 @@ const state = {
   activeLayers: new Set(viewModes[0].types),
   query: "",
   showNames: false,
+  suppressNextNodeClick: false,
   viewport: {
     scale: 1,
     x: 0,
@@ -400,11 +410,14 @@ const state = {
   },
   dragging: {
     active: false,
+    type: null,
     pointerId: null,
     startX: 0,
     startY: 0,
     originX: 0,
     originY: 0,
+    targetId: null,
+    moved: false,
   },
 };
 
@@ -455,6 +468,8 @@ const dom = {
   householdForm: document.querySelector("#householdForm"),
   personForm: document.querySelector("#personForm"),
   relationForm: document.querySelector("#relationForm"),
+  areaForm: document.querySelector("#areaForm"),
+  areaControlList: document.querySelector("#areaControlList"),
   personHouseholdSelect: document.querySelector("#personHouseholdSelect"),
   relationFromSelect: document.querySelector("#relationFromSelect"),
   relationToSelect: document.querySelector("#relationToSelect"),
@@ -480,6 +495,9 @@ function updateProjectCard() {
 }
 
 function refreshDerivedData() {
+  if (!Array.isArray(data.areas) || !data.areas.length) {
+    data.areas = createDefaultAreas();
+  }
   data.maternalData = buildMaternalData(data.households);
 }
 
@@ -488,6 +506,7 @@ function serializeAppState() {
     project: data.project,
     households: data.households,
     relations: data.relations,
+    areas: data.areas,
   };
 }
 
@@ -498,6 +517,7 @@ function applySerializedState(payload) {
   data.project = payload.project;
   data.households = payload.households;
   data.relations = payload.relations;
+  data.areas = Array.isArray(payload.areas) && payload.areas.length ? payload.areas : createDefaultAreas();
   refreshDerivedData();
   state.selectedEntityId = getDefaultSelectionForMode(state.mode);
 }
@@ -562,6 +582,11 @@ function getNextPersonId() {
 function getNextRelationId() {
   const maxId = data.relations.reduce((maxValue, relation) => Math.max(maxValue, Number(relation.id.replace("R", "")) || 0), 0);
   return `R${maxId + 1}`;
+}
+
+function getNextAreaId() {
+  const maxId = data.areas.reduce((maxValue, area) => Math.max(maxValue, Number(String(area.id).replace("A", "")) || 0), 0);
+  return `A${maxId + 1}`;
 }
 
 function reconcileHousehold(household) {
@@ -766,6 +791,62 @@ function renderLayerFilters() {
         state.activeLayers.add(layer);
       }
       render();
+    });
+  });
+}
+
+function renderAreaControls() {
+  if (!dom.areaControlList) return;
+  dom.areaControlList.innerHTML = `
+    <span class="meta-label">已有区域</span>
+    ${data.areas
+      .map(
+        (area) => `
+          <div class="area-control-card" data-area-control-id="${area.id}">
+            <label>
+              <span>名称</span>
+              <input data-area-field="name" type="text" value="${area.name}" />
+            </label>
+            <label>
+              <span>颜色</span>
+              <input data-area-field="color" type="color" value="${area.color}" />
+            </label>
+            <label>
+              <span>X</span>
+              <input data-area-field="x" type="number" value="${Math.round(area.x)}" />
+            </label>
+            <label>
+              <span>Y</span>
+              <input data-area-field="y" type="number" value="${Math.round(area.y)}" />
+            </label>
+            <label>
+              <span>宽</span>
+              <input data-area-field="width" type="number" min="160" value="${Math.round(area.width)}" />
+            </label>
+            <label>
+              <span>高</span>
+              <input data-area-field="height" type="number" min="120" value="${Math.round(area.height)}" />
+            </label>
+          </div>
+        `
+      )
+      .join("")}
+  `;
+
+  dom.areaControlList.querySelectorAll("[data-area-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const card = input.closest("[data-area-control-id]");
+      const area = data.areas.find((candidate) => candidate.id === card.dataset.areaControlId);
+      if (!area) return;
+      const field = input.dataset.areaField;
+      if (field === "name" || field === "color") {
+        area[field] = input.value;
+      } else {
+        const minimum = field === "width" ? 160 : field === "height" ? 120 : 0;
+        area[field] = Math.max(minimum, Number(input.value) || minimum);
+      }
+      saveToLocal();
+      renderMap();
     });
   });
 }
@@ -1056,7 +1137,6 @@ function renderHouseholdMemberGraph(household) {
 }
 
 function buildHouseMapModel() {
-  const laneOrder = new Map(laneNames.map((lane, index) => [lane, index]));
   const grouped = new Map(laneNames.map((lane) => [lane, []]));
   getFilteredEntities()
     .slice()
@@ -1070,30 +1150,38 @@ function buildHouseMapModel() {
     (grouped.get(lane) ?? []).forEach((household, index) => {
       const col = index % 6;
       const row = Math.floor(index / 6);
+      const fallbackX = 110 + col * 255;
+      const fallbackY = 120 + laneIndex * 360 + row * 175;
+      if (typeof household.mapX !== "number") household.mapX = fallbackX;
+      if (typeof household.mapY !== "number") household.mapY = fallbackY;
       entities.push({
         ...household,
-        x: 110 + col * 255,
-        y: 120 + laneIndex * 360 + row * 175,
+        x: household.mapX,
+        y: household.mapY,
       });
     });
   });
   const entityIds = new Set(entities.map((entity) => entity.id));
   const relations = getVisibleRelations().filter((relation) => entityIds.has(relation.from) && entityIds.has(relation.to));
+  const areaBounds = data.areas.reduce(
+    (bounds, area) => ({
+      width: Math.max(bounds.width, area.x + area.width + 120),
+      height: Math.max(bounds.height, area.y + area.height + 120),
+    }),
+    { width: 1760, height: 1240 }
+  );
+  const nodeBounds = entities.reduce(
+    (bounds, entity) => ({
+      width: Math.max(bounds.width, entity.x + 340),
+      height: Math.max(bounds.height, entity.y + 240),
+    }),
+    areaBounds
+  );
   return {
     entities,
     relations,
-    bounds: { width: 1760, height: 1240 },
-    backgroundMarkup: laneNames
-      .map((lane, laneIndex) => {
-        const y = 72 + laneIndex * 360;
-        return `
-          <g>
-            <rect x="60" y="${y}" width="1620" height="300" rx="28" fill="rgba(255,255,255,0.22)" stroke="rgba(105,87,67,0.1)" />
-            <text x="92" y="${y + 42}" class="node-title" style="font-size:24px;">${lane}</text>
-          </g>
-        `;
-      })
-      .join(""),
+    bounds: nodeBounds,
+    backgroundMarkup: renderAreaMarkup(),
   };
 }
 
@@ -1220,6 +1308,21 @@ function buildMapModel() {
   return buildHouseMapModel();
 }
 
+function renderAreaMarkup() {
+  if (state.mode !== "house") return "";
+  return data.areas
+    .map(
+      (area) => `
+        <g class="canvas-area" data-area-id="${area.id}" transform="translate(${area.x}, ${area.y})">
+          <rect class="area-main" width="${area.width}" height="${area.height}" rx="28" style="fill:${area.color};" />
+          <text class="area-title" x="26" y="42">${area.name}</text>
+          <rect class="area-resize" data-area-resize-id="${area.id}" x="${area.width - 28}" y="${area.height - 28}" width="18" height="18" rx="5" />
+        </g>
+      `
+    )
+    .join("");
+}
+
 function buildGridMarkup(bounds) {
   const lines = [];
   for (let x = 0; x <= bounds.width; x += 120) {
@@ -1311,8 +1414,28 @@ function renderMap() {
   dom.map.setAttribute("viewBox", `0 0 ${CANVAS_VIEW.width} ${CANVAS_VIEW.height}`);
 
   dom.map.querySelectorAll("[data-node-id]").forEach((node) => {
+    node.addEventListener("pointerdown", (event) => {
+      beginHouseholdDrag(event, node.dataset.nodeId);
+    });
+
     node.addEventListener("click", () => {
+      if (state.suppressNextNodeClick) {
+        state.suppressNextNodeClick = false;
+        return;
+      }
       selectEntity(node.dataset.nodeId, { revealDetails: false, centerMap: false });
+    });
+  });
+
+  dom.map.querySelectorAll("[data-area-id]").forEach((areaNode) => {
+    areaNode.addEventListener("pointerdown", (event) => {
+      beginAreaDrag(event, areaNode.dataset.areaId);
+    });
+  });
+
+  dom.map.querySelectorAll("[data-area-resize-id]").forEach((handle) => {
+    handle.addEventListener("pointerdown", (event) => {
+      beginAreaResize(event, handle.dataset.areaResizeId);
     });
   });
 }
@@ -1503,6 +1626,144 @@ function zoomAtPoint(nextScale, clientX, clientY) {
   renderMap();
 }
 
+function getCanvasWorldPoint(clientX, clientY) {
+  const rect = dom.map.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - state.viewport.x) / state.viewport.scale,
+    y: (clientY - rect.top - state.viewport.y) / state.viewport.scale,
+  };
+}
+
+function beginHouseholdDrag(event, householdId) {
+  if (state.mode !== "house" || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const household = getHouseholdById(householdId);
+  if (!household) return;
+  const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.dragging = {
+    active: true,
+    type: "household",
+    pointerId: event.pointerId,
+    startX: point.x,
+    startY: point.y,
+    originX: household.mapX ?? household.x,
+    originY: household.mapY ?? household.y,
+    targetId: household.id,
+    moved: false,
+  };
+  state.selectedEntityId = household.id;
+  dom.canvasFrame.classList.add("dragging");
+  dom.map.setPointerCapture(event.pointerId);
+}
+
+function beginAreaDrag(event, areaId) {
+  if (state.mode !== "house" || event.button !== 0 || event.target.closest("[data-area-resize-id]")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const area = data.areas.find((candidate) => candidate.id === areaId);
+  if (!area) return;
+  const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.dragging = {
+    active: true,
+    type: "area",
+    pointerId: event.pointerId,
+    startX: point.x,
+    startY: point.y,
+    originX: area.x,
+    originY: area.y,
+    targetId: area.id,
+    moved: false,
+  };
+  dom.canvasFrame.classList.add("dragging");
+  dom.map.setPointerCapture(event.pointerId);
+}
+
+function beginAreaResize(event, areaId) {
+  if (state.mode !== "house" || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const area = data.areas.find((candidate) => candidate.id === areaId);
+  if (!area) return;
+  const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.dragging = {
+    active: true,
+    type: "area-resize",
+    pointerId: event.pointerId,
+    startX: point.x,
+    startY: point.y,
+    originX: area.width,
+    originY: area.height,
+    targetId: area.id,
+    moved: false,
+  };
+  dom.canvasFrame.classList.add("dragging");
+  dom.map.setPointerCapture(event.pointerId);
+}
+
+function updateCanvasDrag(event) {
+  if (!state.dragging.active || state.dragging.pointerId !== event.pointerId) return false;
+  const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  const deltaX = point.x - state.dragging.startX;
+  const deltaY = point.y - state.dragging.startY;
+
+  if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+    state.dragging.moved = true;
+  }
+
+  if (state.dragging.type === "household") {
+    const household = getHouseholdById(state.dragging.targetId);
+    if (!household) return true;
+    household.mapX = Math.max(0, state.dragging.originX + deltaX);
+    household.mapY = Math.max(0, state.dragging.originY + deltaY);
+    renderMap();
+    return true;
+  }
+
+  if (state.dragging.type === "area") {
+    const area = data.areas.find((candidate) => candidate.id === state.dragging.targetId);
+    if (!area) return true;
+    area.x = Math.max(0, state.dragging.originX + deltaX);
+    area.y = Math.max(0, state.dragging.originY + deltaY);
+    renderMap();
+    return true;
+  }
+
+  if (state.dragging.type === "area-resize") {
+    const area = data.areas.find((candidate) => candidate.id === state.dragging.targetId);
+    if (!area) return true;
+    area.width = Math.max(160, state.dragging.originX + deltaX);
+    area.height = Math.max(120, state.dragging.originY + deltaY);
+    renderMap();
+    return true;
+  }
+
+  return false;
+}
+
+function finishCanvasDrag(event) {
+  if (!state.dragging.active || state.dragging.pointerId !== event.pointerId) return false;
+  const shouldPersist = ["household", "area", "area-resize"].includes(state.dragging.type) && state.dragging.moved;
+  const draggedType = state.dragging.type;
+  state.dragging.active = false;
+  state.dragging.pointerId = null;
+  state.dragging.type = null;
+  state.dragging.targetId = null;
+  state.suppressNextNodeClick = shouldPersist && draggedType === "household";
+  state.dragging.moved = false;
+  dom.canvasFrame.classList.remove("dragging");
+  try {
+    dom.map.releasePointerCapture(event.pointerId);
+  } catch (error) {
+    // The pointer may already have been released by the browser.
+  }
+  if (shouldPersist) {
+    saveToLocal();
+    render();
+  }
+  return true;
+}
+
 function centerOnEntity(entityId) {
   const entity = getCurrentEntities().find((item) => item.id === entityId);
   if (!entity) return;
@@ -1677,6 +1938,23 @@ function handleRelationSubmit(event) {
   persistAndRender("已新增家屋关系。");
 }
 
+function handleAreaSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const area = {
+    id: getNextAreaId(),
+    name: form.get("area_name").toString().trim(),
+    color: form.get("area_color").toString() || "#d7b46a",
+    x: Math.max(0, Number(form.get("area_x")) || 120),
+    y: Math.max(0, Number(form.get("area_y")) || 120),
+    width: Math.max(160, Number(form.get("area_width")) || 520),
+    height: Math.max(120, Number(form.get("area_height")) || 280),
+  };
+  data.areas.push(area);
+  event.currentTarget.reset();
+  persistAndRender(`已新增区域：${area.name}。`);
+}
+
 async function handleCopyShareLink() {
   const payload = encodeSharePayload(serializeAppState());
   const url = `${window.location.origin}${window.location.pathname}#share=${payload}`;
@@ -1713,14 +1991,17 @@ function bindCanvasInteractions() {
   );
 
   dom.map.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("[data-node-id]")) return;
+    if (event.target.closest("[data-node-id]") || event.target.closest("[data-area-id]")) return;
     state.dragging = {
       active: true,
+      type: "pan",
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       originX: state.viewport.x,
       originY: state.viewport.y,
+      targetId: null,
+      moved: false,
     };
     dom.canvasFrame.classList.add("dragging");
     dom.map.setPointerCapture(event.pointerId);
@@ -1728,15 +2009,20 @@ function bindCanvasInteractions() {
 
   dom.map.addEventListener("pointermove", (event) => {
     if (!state.dragging.active || state.dragging.pointerId !== event.pointerId) return;
+    if (updateCanvasDrag(event)) return;
     state.viewport.x = state.dragging.originX + (event.clientX - state.dragging.startX);
     state.viewport.y = state.dragging.originY + (event.clientY - state.dragging.startY);
+    state.dragging.moved = true;
     renderMap();
   });
 
   function endDrag(event) {
+    if (finishCanvasDrag(event)) return;
     if (!state.dragging.active || state.dragging.pointerId !== event.pointerId) return;
     state.dragging.active = false;
     state.dragging.pointerId = null;
+    state.dragging.type = null;
+    state.dragging.targetId = null;
     dom.canvasFrame.classList.remove("dragging");
     dom.map.releasePointerCapture(event.pointerId);
   }
@@ -1762,6 +2048,7 @@ function bindControls() {
   dom.householdForm.addEventListener("submit", handleHouseholdSubmit);
   dom.personForm.addEventListener("submit", handlePersonSubmit);
   dom.relationForm.addEventListener("submit", handleRelationSubmit);
+  dom.areaForm.addEventListener("submit", handleAreaSubmit);
   dom.importFileInput.addEventListener("change", handleImportFile);
 
   dom.searchInput.addEventListener("input", (event) => {
@@ -1809,6 +2096,7 @@ function render() {
   renderStats();
   renderModeSwitch();
   renderLayerFilters();
+  renderAreaControls();
   renderLegend();
   populateHouseholdSelects();
   renderEntityList();
