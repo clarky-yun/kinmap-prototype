@@ -142,6 +142,7 @@ function createVillageData() {
         gender,
         age,
         role,
+        status: role === "配偶" ? "婚入" : "在户",
         note,
       };
       personId += 1;
@@ -249,6 +250,7 @@ function createVillageData() {
     households,
     relations,
     areas: createDefaultAreas(),
+    maternalPositions: {},
     maternalData,
   };
 }
@@ -404,6 +406,10 @@ const state = {
   showNames: false,
   suppressNextNodeClick: false,
   selectedAreaId: data.areas[0]?.id ?? null,
+  selectedRelationId: null,
+  historyPast: [],
+  historyFuture: [],
+  pendingHistory: null,
   viewport: {
     scale: 1,
     x: 0,
@@ -449,6 +455,8 @@ const dom = {
   selectedBadge: document.querySelector("#selectedBadge"),
   viewTitle: document.querySelector("#viewTitle"),
   searchInput: document.querySelector("#searchInput"),
+  undoBtn: document.querySelector("#undoBtn"),
+  redoBtn: document.querySelector("#redoBtn"),
   fitViewBtn: document.querySelector("#fitViewBtn"),
   toggleNamesBtn: document.querySelector("#toggleNamesBtn"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
@@ -499,6 +507,10 @@ function refreshDerivedData() {
   if (!Array.isArray(data.areas)) {
     data.areas = createDefaultAreas();
   }
+  if (!data.maternalPositions || typeof data.maternalPositions !== "object") {
+    data.maternalPositions = {};
+  }
+  data.households.forEach(reconcileHousehold);
   data.maternalData = buildMaternalData(data.households);
 }
 
@@ -508,6 +520,7 @@ function serializeAppState() {
     households: data.households,
     relations: data.relations,
     areas: data.areas,
+    maternalPositions: data.maternalPositions ?? {},
   };
 }
 
@@ -519,13 +532,56 @@ function applySerializedState(payload) {
   data.households = payload.households;
   data.relations = payload.relations;
   data.areas = Array.isArray(payload.areas) ? payload.areas : createDefaultAreas();
+  data.maternalPositions = payload.maternalPositions && typeof payload.maternalPositions === "object" ? payload.maternalPositions : {};
   refreshDerivedData();
   state.selectedEntityId = getDefaultSelectionForMode(state.mode);
   state.selectedAreaId = data.areas[0]?.id ?? null;
+  state.selectedRelationId = null;
 }
 
 function saveToLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeAppState()));
+}
+
+function cloneSerializedState() {
+  return JSON.parse(JSON.stringify(serializeAppState()));
+}
+
+function pushHistory(label = "编辑") {
+  state.historyPast.push({ label, snapshot: cloneSerializedState() });
+  if (state.historyPast.length > 60) {
+    state.historyPast.shift();
+  }
+  state.historyFuture = [];
+  updateHistoryButtons();
+}
+
+function restoreSnapshot(snapshot) {
+  applySerializedState(JSON.parse(JSON.stringify(snapshot)));
+  saveToLocal();
+  syncProjectForm();
+  populateHouseholdSelects();
+  render();
+}
+
+function undoLastChange() {
+  const previous = state.historyPast.pop();
+  if (!previous) return;
+  state.historyFuture.push({ label: previous.label, snapshot: cloneSerializedState() });
+  restoreSnapshot(previous.snapshot);
+}
+
+function redoLastChange() {
+  const next = state.historyFuture.pop();
+  if (!next) return;
+  state.historyPast.push({ label: next.label, snapshot: cloneSerializedState() });
+  restoreSnapshot(next.snapshot);
+}
+
+function updateHistoryButtons() {
+  if (!dom.undoBtn || !dom.redoBtn) return;
+  dom.undoBtn.disabled = !state.historyPast.length;
+  dom.redoBtn.disabled = !state.historyFuture.length;
 }
 
 function loadFromLocal() {
@@ -586,12 +642,21 @@ function getNextRelationId() {
   return `R${maxId + 1}`;
 }
 
+function getRelationById(id) {
+  return data.relations.find((relation) => relation.id === id) ?? data.maternalData.relations.find((relation) => relation.id === id);
+}
+
 function getNextAreaId() {
   const maxId = data.areas.reduce((maxValue, area) => Math.max(maxValue, Number(String(area.id).replace("A", "")) || 0), 0);
   return `A${maxId + 1}`;
 }
 
 function reconcileHousehold(household) {
+  household.members.forEach((member) => {
+    if (!member.status) {
+      member.status = member.role.includes("配偶") ? "婚入" : "在户";
+    }
+  });
   household.memberCount = household.members.length;
   household.daughterIds = household.members
     .filter((member) => member.gender === "女" && (member.role.includes("子") || member.role.includes("继承")))
@@ -837,10 +902,11 @@ function renderAreaControls() {
   `;
 
   dom.areaControlList.querySelectorAll("[data-area-field]").forEach((input) => {
-    input.addEventListener("input", () => {
+    input.addEventListener("change", () => {
       const card = input.closest("[data-area-control-id]");
       const area = data.areas.find((candidate) => candidate.id === card.dataset.areaControlId);
       if (!area) return;
+      pushHistory("编辑区域");
       updateAreaField(area, input.dataset.areaField, input.value);
       saveToLocal();
       renderMap();
@@ -850,6 +916,7 @@ function renderAreaControls() {
 
   dom.areaControlList.querySelectorAll("[data-delete-area-id]").forEach((button) => {
     button.addEventListener("click", () => {
+      pushHistory("删除区域");
       deleteArea(button.dataset.deleteAreaId);
       persistAndRender("区域已删除。");
     });
@@ -1007,7 +1074,7 @@ function renderDetailPane() {
             (member) => `
               <article class="member-card">
                 <h4 class="member-name">${member.name}</h4>
-                <span class="member-meta">${member.gender} · ${member.age} 岁 · ${member.role}</span>
+                <span class="member-meta">${member.gender} · ${member.age} 岁 · ${member.role} · ${member.status ?? "在户"}</span>
                 <p>${member.note}</p>
               </article>
             `
@@ -1121,7 +1188,7 @@ function renderHouseholdMemberGraph(household) {
         <g class="member-node" transform="translate(${member.x}, ${member.y})">
           <rect width="${nodeWidth}" height="${nodeHeight}" rx="12" />
           <text x="${nodeWidth / 2}" y="22" text-anchor="middle">${shortenText(member.name, 7)}</text>
-          <text x="${nodeWidth / 2}" y="43" text-anchor="middle">${member.gender} · ${shortenText(member.role, 5)}</text>
+          <text x="${nodeWidth / 2}" y="43" text-anchor="middle">${member.gender} · ${shortenText(member.status ?? member.role, 5)}</text>
         </g>
       `
     )
@@ -1225,10 +1292,14 @@ function buildPatrilinealMapModel() {
       const slotIndex = bucket.findIndex((candidate) => candidate.id === household.id);
       const slotCol = slotIndex % 2;
       const slotRow = Math.floor(slotIndex / 2);
+      const fallbackX = 110 + branchIndex * 760 + slotCol * 260;
+      const fallbackY = 150 + (household.generation - 1) * 235 + slotRow * 150;
+      if (typeof household.patrilinealX !== "number") household.patrilinealX = fallbackX;
+      if (typeof household.patrilinealY !== "number") household.patrilinealY = fallbackY;
       entities.push({
         ...household,
-        x: 110 + branchIndex * 760 + slotCol * 260,
-        y: 150 + (household.generation - 1) * 235 + slotRow * 150,
+        x: household.patrilinealX,
+        y: household.patrilinealY,
       });
     });
   });
@@ -1286,10 +1357,11 @@ function buildMatrilinealMapModel() {
 
     people.forEach((person) => {
       const offset = offsets[person.kind] ?? { x: 0, y: 0 };
+      const saved = data.maternalPositions?.[person.id];
       entities.push({
         ...person,
-        x: baseX + offset.x,
-        y: baseY + offset.y,
+        x: saved?.x ?? baseX + offset.x,
+        y: saved?.y ?? baseY + offset.y,
         clusterX: baseX,
         clusterY: baseY,
       });
@@ -1333,7 +1405,7 @@ function renderAreaMarkup() {
   return data.areas
     .map(
       (area) => `
-        <g class="canvas-area" data-area-id="${area.id}" transform="translate(${area.x}, ${area.y})">
+        <g class="canvas-area ${area.id === state.selectedAreaId ? "selected" : ""}" data-area-id="${area.id}" transform="translate(${area.x}, ${area.y})">
           <rect class="area-main" width="${area.width}" height="${area.height}" rx="28" style="fill:${area.color};" />
           <text class="area-title" x="26" y="42">${area.name}</text>
           <rect class="area-resize" data-area-resize-id="${area.id}" x="${area.width - 28}" y="${area.height - 28}" width="18" height="18" rx="5" />
@@ -1409,7 +1481,7 @@ function renderMap() {
         : "";
 
       return `
-        <g>
+        <g class="edge-group" data-relation-id="${relation.id}">
           <path class="${edgeClass}" d="M ${start.x} ${start.y} Q ${curveX} ${curveY} ${end.x} ${end.y}" style="stroke:${meta.color};stroke-dasharray:${meta.dash};${markerId ? `marker-end:url(#${markerId});` : ""}" />
           <circle class="edge-dot edge-start" cx="${start.x}" cy="${start.y}" r="4.5" fill="${meta.color}" />
           ${markerId ? "" : `<circle class="edge-dot" cx="${end.x}" cy="${end.y}" r="4.5" fill="${meta.color}" />`}
@@ -1458,6 +1530,14 @@ function renderMap() {
     });
   });
 
+  dom.map.querySelectorAll("[data-relation-id]").forEach((edge) => {
+    edge.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.selectedRelationId = edge.dataset.relationId;
+      renderCanvasFocusCard();
+    });
+  });
+
   dom.map.querySelectorAll("[data-area-id]").forEach((areaNode) => {
     areaNode.addEventListener("pointerdown", (event) => {
       beginAreaDrag(event, areaNode.dataset.areaId);
@@ -1465,6 +1545,17 @@ function renderMap() {
     areaNode.addEventListener("click", () => {
       state.selectedAreaId = areaNode.dataset.areaId;
       renderCanvasFocusCard();
+    });
+    areaNode.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      const area = data.areas.find((candidate) => candidate.id === areaNode.dataset.areaId);
+      if (!area) return;
+      const nextName = window.prompt("区域名称", area.name);
+      if (!nextName) return;
+      pushHistory("重命名区域");
+      area.name = nextName.trim();
+      state.selectedAreaId = area.id;
+      persistAndRender("区域已重命名。");
     });
   });
 
@@ -1528,8 +1619,9 @@ function renderMatrilinealNode(entity, isSelected, isRelated, relationCount) {
 }
 
 function getNodeAnchor(entity) {
-  const x = entity.mapX ?? entity.x;
-  const y = entity.mapY ?? entity.y;
+  const position = getStoredEntityPosition(entity);
+  const x = position.x;
+  const y = position.y;
   if (state.mode === "matrilineal") {
     return { x: x + 100, y: y + 58 };
   }
@@ -1537,8 +1629,9 @@ function getNodeAnchor(entity) {
 }
 
 function getNodeBox(entity) {
-  const x = entity.mapX ?? entity.x;
-  const y = entity.mapY ?? entity.y;
+  const position = getStoredEntityPosition(entity);
+  const x = position.x;
+  const y = position.y;
   if (state.mode === "matrilineal") {
     return { x, y, width: 200, height: 116 };
   }
@@ -1626,6 +1719,7 @@ function renderSelectionStrip() {
 function renderCanvasFocusCard() {
   const selected = getCurrentEntity();
   const relationCount = getSelectedRelations().length;
+  const selectedRelation = state.selectedRelationId ? getRelationById(state.selectedRelationId) : null;
 
   if (state.mode === "house") {
     const selectedArea = data.areas.find((area) => area.id === state.selectedAreaId) ?? data.areas[0];
@@ -1675,8 +1769,12 @@ function renderCanvasFocusCard() {
             : `<span>还没有区域。点击“新增”创建一个区域。</span>`
         }
       </div>
+      ${renderRelationEditorMarkup(selectedRelation)}
+      ${renderQuickRelationFormMarkup(selected)}
     `;
     bindCanvasAreaEditor(selectedArea);
+    bindRelationEditor(selectedRelation);
+    bindQuickRelationForm(selected);
     return;
   }
 
@@ -1688,7 +1786,9 @@ function renderCanvasFocusCard() {
       <span>${selected.focusLabel} · ${selected.age} 岁 · ${selected.role}</span>
       <span>生于 ${birthHouse?.shortName ?? "-"} · 居于 ${residenceHouse?.shortName ?? "-"}</span>
       <span>当前画布显示与她直接相关的 ${relationCount} 条母系关系</span>
+      ${renderRelationEditorMarkup(selectedRelation)}
     `;
+    bindRelationEditor(selectedRelation);
     return;
   }
 
@@ -1697,7 +1797,101 @@ function renderCanvasFocusCard() {
     <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员</span>
     <span>第 ${selected.generation} 代 · 父系链已高亮</span>
     <span>当前画布显示与这一户直接相关的 ${relationCount} 条关系</span>
+    ${renderRelationEditorMarkup(selectedRelation)}
+    ${renderQuickRelationFormMarkup(selected)}
   `;
+  bindRelationEditor(selectedRelation);
+  bindQuickRelationForm(selected);
+}
+
+function renderQuickRelationFormMarkup(selected) {
+  if (state.mode === "matrilineal") return "";
+  const allowedTypes = state.mode === "patrilineal" ? ["patrilineal", "inheritance", "marriage"] : ["house", "marriage", "inheritance", "adoption"];
+  const options = data.households
+    .filter((household) => household.id !== selected.id)
+    .map((household) => `<option value="${household.id}">${household.shortName} · ${household.branch}</option>`)
+    .join("");
+  return `
+    <div class="canvas-card-section quick-relation">
+      <strong>快速添加关系</strong>
+      <select data-quick-relation="target">${options}</select>
+      <select data-quick-relation="type">
+        ${allowedTypes.map((type) => `<option value="${type}">${relationTypes[type].label}</option>`).join("")}
+      </select>
+      <textarea data-quick-relation="note" rows="2" placeholder="说明 / 证据"></textarea>
+      <button class="mini-button" type="button" data-quick-relation-action="add">添加关系</button>
+    </div>
+  `;
+}
+
+function bindQuickRelationForm(selected) {
+  dom.canvasFocusCard.querySelector("[data-quick-relation-action='add']")?.addEventListener("click", () => {
+    const target = dom.canvasFocusCard.querySelector("[data-quick-relation='target']")?.value;
+    const type = dom.canvasFocusCard.querySelector("[data-quick-relation='type']")?.value;
+    const note = dom.canvasFocusCard.querySelector("[data-quick-relation='note']")?.value.trim();
+    if (!target || !type) return;
+    pushHistory("快速添加关系");
+    const relation = {
+      id: getNextRelationId(),
+      from: selected.id,
+      to: target,
+      type,
+      strength: 0.8,
+      note: note || "从画布快速添加的关系。",
+    };
+    data.relations.push(relation);
+    state.selectedRelationId = relation.id;
+    persistAndRender("已添加关系。");
+  });
+}
+
+function renderRelationEditorMarkup(relation) {
+  if (!relation) return "";
+  const from = getHouseholdById(relation.from) ?? getMaternalPersonById(relation.from);
+  const to = getHouseholdById(relation.to) ?? getMaternalPersonById(relation.to);
+  const isEditable = data.relations.some((candidate) => candidate.id === relation.id);
+  const editableTypes = ["house", "marriage", "inheritance", "adoption", "patrilineal"];
+  const typeOptions = isEditable || editableTypes.includes(relation.type) ? editableTypes : [relation.type];
+  return `
+    <div class="canvas-card-section relation-editor">
+      <strong>关系线</strong>
+      <span>${from?.shortName ?? from?.name ?? relation.from} → ${to?.shortName ?? to?.name ?? relation.to}</span>
+      <label>
+        <span>类型</span>
+        <select data-relation-field="type" ${isEditable ? "" : "disabled"}>
+          ${typeOptions
+            .map((type) => `<option value="${type}" ${relation.type === type ? "selected" : ""}>${relationTypes[type]?.label ?? type}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <label>
+        <span>说明 / 证据</span>
+        <textarea data-relation-field="note" rows="3" ${isEditable ? "" : "readonly"}>${relation.note}</textarea>
+      </label>
+      ${
+        isEditable
+          ? `<button class="mini-button danger" type="button" data-relation-action="delete">删除关系</button>`
+          : `<span>母系关系由人物资料自动生成，暂不直接编辑。</span>`
+      }
+    </div>
+  `;
+}
+
+function bindRelationEditor(relation) {
+  if (!relation || !data.relations.some((candidate) => candidate.id === relation.id)) return;
+  dom.canvasFocusCard.querySelectorAll("[data-relation-field]").forEach((field) => {
+    field.addEventListener("change", () => {
+      pushHistory("编辑关系");
+      relation[field.dataset.relationField] = field.value;
+      persistAndRender("关系已更新。");
+    });
+  });
+  dom.canvasFocusCard.querySelector("[data-relation-action='delete']")?.addEventListener("click", () => {
+    pushHistory("删除关系");
+    data.relations = data.relations.filter((candidate) => candidate.id !== relation.id);
+    state.selectedRelationId = null;
+    persistAndRender("关系已删除。");
+  });
 }
 
 function bindCanvasAreaEditor(selectedArea) {
@@ -1710,13 +1904,15 @@ function bindCanvasAreaEditor(selectedArea) {
 
   dom.canvasFocusCard.querySelector("[data-area-action='delete']")?.addEventListener("click", () => {
     if (!selectedArea) return;
+    pushHistory("删除区域");
     deleteArea(selectedArea.id);
     persistAndRender("区域已删除。");
   });
 
   dom.canvasFocusCard.querySelectorAll("[data-focus-area-field]").forEach((input) => {
-    input.addEventListener("input", () => {
+    input.addEventListener("change", () => {
       if (!selectedArea) return;
+      pushHistory("编辑区域");
       updateAreaField(selectedArea, input.dataset.focusAreaField, input.value);
       saveToLocal();
       renderAreaControls();
@@ -1790,26 +1986,54 @@ function getCanvasWorldPoint(clientX, clientY) {
 }
 
 function beginHouseholdDrag(event, householdId) {
-  if (state.mode !== "house" || event.button !== 0) return;
+  if (event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
-  const household = getHouseholdById(householdId);
-  if (!household) return;
+  const entity = state.mode === "matrilineal" ? getMaternalPersonById(householdId) : getHouseholdById(householdId);
+  if (!entity) return;
+  const position = getStoredEntityPosition(entity);
   const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.pendingHistory = cloneSerializedState();
   state.dragging = {
     active: true,
-    type: "household",
+    type: "entity",
     pointerId: event.pointerId,
     startX: point.x,
     startY: point.y,
-    originX: household.mapX ?? household.x,
-    originY: household.mapY ?? household.y,
-    targetId: household.id,
+    originX: position.x,
+    originY: position.y,
+    targetId: entity.id,
     moved: false,
   };
-  state.selectedEntityId = household.id;
+  state.selectedEntityId = entity.id;
   dom.canvasFrame.classList.add("dragging");
   dom.map.setPointerCapture(event.pointerId);
+}
+
+function getStoredEntityPosition(entity) {
+  if (state.mode === "matrilineal") {
+    return data.maternalPositions?.[entity.id] ?? { x: entity.x, y: entity.y };
+  }
+  if (state.mode === "patrilineal") {
+    return { x: entity.patrilinealX ?? entity.x, y: entity.patrilinealY ?? entity.y };
+  }
+  return { x: entity.mapX ?? entity.x, y: entity.mapY ?? entity.y };
+}
+
+function setStoredEntityPosition(entityId, x, y) {
+  if (state.mode === "matrilineal") {
+    data.maternalPositions[entityId] = { x, y };
+    return;
+  }
+  const household = getHouseholdById(entityId);
+  if (!household) return;
+  if (state.mode === "patrilineal") {
+    household.patrilinealX = x;
+    household.patrilinealY = y;
+    return;
+  }
+  household.mapX = x;
+  household.mapY = y;
 }
 
 function beginAreaDrag(event, areaId) {
@@ -1820,6 +2044,7 @@ function beginAreaDrag(event, areaId) {
   if (!area) return;
   state.selectedAreaId = area.id;
   const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.pendingHistory = cloneSerializedState();
   state.dragging = {
     active: true,
     type: "area",
@@ -1843,6 +2068,7 @@ function beginAreaResize(event, areaId) {
   if (!area) return;
   state.selectedAreaId = area.id;
   const point = getCanvasWorldPoint(event.clientX, event.clientY);
+  state.pendingHistory = cloneSerializedState();
   state.dragging = {
     active: true,
     type: "area-resize",
@@ -1868,11 +2094,8 @@ function updateCanvasDrag(event) {
     state.dragging.moved = true;
   }
 
-  if (state.dragging.type === "household") {
-    const household = getHouseholdById(state.dragging.targetId);
-    if (!household) return true;
-    household.mapX = state.dragging.originX + deltaX;
-    household.mapY = state.dragging.originY + deltaY;
+  if (state.dragging.type === "entity") {
+    setStoredEntityPosition(state.dragging.targetId, state.dragging.originX + deltaX, state.dragging.originY + deltaY);
     renderMap();
     return true;
   }
@@ -1900,13 +2123,13 @@ function updateCanvasDrag(event) {
 
 function finishCanvasDrag(event) {
   if (!state.dragging.active || state.dragging.pointerId !== event.pointerId) return false;
-  const shouldPersist = ["household", "area", "area-resize"].includes(state.dragging.type) && state.dragging.moved;
+  const shouldPersist = ["entity", "area", "area-resize"].includes(state.dragging.type) && state.dragging.moved;
   const draggedType = state.dragging.type;
   state.dragging.active = false;
   state.dragging.pointerId = null;
   state.dragging.type = null;
   state.dragging.targetId = null;
-  state.suppressNextNodeClick = shouldPersist && draggedType === "household";
+  state.suppressNextNodeClick = shouldPersist && draggedType === "entity";
   state.dragging.moved = false;
   dom.canvasFrame.classList.remove("dragging");
   try {
@@ -1915,8 +2138,17 @@ function finishCanvasDrag(event) {
     // The pointer may already have been released by the browser.
   }
   if (shouldPersist) {
+    if (state.pendingHistory) {
+      state.historyPast.push({ label: "拖动画布对象", snapshot: state.pendingHistory });
+      if (state.historyPast.length > 60) state.historyPast.shift();
+      state.historyFuture = [];
+      state.pendingHistory = null;
+      updateHistoryButtons();
+    }
     saveToLocal();
     render();
+  } else {
+    state.pendingHistory = null;
   }
   return true;
 }
@@ -1988,6 +2220,7 @@ function persistAndRender(statusMessage) {
 
 function handleProjectSubmit(event) {
   event.preventDefault();
+  pushHistory("保存项目");
   data.project.name = dom.projectNameInput.value.trim() || data.project.name;
   data.project.location = dom.projectLocationInput.value.trim() || data.project.location;
   data.project.summary = dom.projectSummaryInput.value.trim() || data.project.summary;
@@ -1997,6 +2230,7 @@ function handleProjectSubmit(event) {
 
 function handleHouseholdSubmit(event) {
   event.preventDefault();
+  pushHistory("新增家屋");
   const form = new FormData(event.currentTarget);
   const householdId = getNextHouseholdId();
   const name = form.get("household_name").toString().trim();
@@ -2043,6 +2277,7 @@ function handleHouseholdSubmit(event) {
 
 function handlePersonSubmit(event) {
   event.preventDefault();
+  pushHistory("新增成员");
   const form = new FormData(event.currentTarget);
   const household = getHouseholdById(form.get("household_id").toString());
   if (!household) return;
@@ -2054,6 +2289,7 @@ function handlePersonSubmit(event) {
     gender: form.get("gender").toString(),
     age: Number(form.get("age")) || 0,
     role: form.get("role").toString().trim() || "成员",
+    status: form.get("status")?.toString() || "在户",
     note: form.get("note").toString().trim() || "新录入成员。",
   };
   household.members.push(person);
@@ -2073,6 +2309,7 @@ function handleRelationSubmit(event) {
     dom.shareStatus.textContent = "关系的起点和终点需要是两个不同家屋。";
     return;
   }
+  pushHistory("新增家屋关系");
   const relationType = form.get("relation_type").toString();
   const relation = {
     id: getNextRelationId(),
@@ -2097,6 +2334,7 @@ function handleRelationSubmit(event) {
 
 function handleAreaSubmit(event) {
   event.preventDefault();
+  pushHistory("新增区域");
   const form = new FormData(event.currentTarget);
   const area = {
     id: getNextAreaId(),
@@ -2190,6 +2428,8 @@ function bindCanvasInteractions() {
 }
 
 function bindControls() {
+  dom.undoBtn.addEventListener("click", undoLastChange);
+  dom.redoBtn.addEventListener("click", redoLastChange);
   dom.openProjectBtn.addEventListener("click", () => openModal("project"));
   dom.openEntryBtn.addEventListener("click", () => openModal("entry"));
   dom.openShareBtn.addEventListener("click", () => openModal("share"));
@@ -2250,6 +2490,7 @@ function bindControls() {
 function render() {
   dom.viewTitle.textContent = getCurrentMode().title;
   dom.entityListTitle.textContent = getCurrentMode().listLabel;
+  updateHistoryButtons();
   updateProjectCard();
   renderStats();
   renderModeSwitch();

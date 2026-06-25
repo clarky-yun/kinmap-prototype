@@ -73,6 +73,8 @@
             <h2 id="viewTitle">家屋网络总览</h2>
           </div>
           <div class="toolbar">
+            <button id="undoBtn" class="tool-button" type="button">撤销</button>
+            <button id="redoBtn" class="tool-button" type="button">重做</button>
             <button id="fitViewBtn" class="tool-button" type="button">重置视图</button>
             <button id="toggleNamesBtn" class="tool-button" type="button">切换成员标签</button>
           </div>
@@ -236,6 +238,17 @@
                 <label class="field">
                   <span>身份</span>
                   <input name="role" type="text" placeholder="例如：配偶 / 子代 / 户主" />
+                </label>
+                <label class="field">
+                  <span>状态</span>
+                  <select name="status">
+                    <option>在户</option>
+                    <option>婚入</option>
+                    <option>外嫁</option>
+                    <option>迁出</option>
+                    <option>过继</option>
+                    <option>已故</option>
+                  </select>
                 </label>
                 <label class="field field-wide">
                   <span>备注</span>
