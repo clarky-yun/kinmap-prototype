@@ -1,12 +1,12 @@
 :root {
   color-scheme: light;
-  --bg: #efe6d6;
-  --bg-strong: #e4d6bc;
-  --paper: rgba(255, 251, 244, 0.85);
-  --panel: rgba(255, 249, 240, 0.72);
-  --line: rgba(90, 67, 42, 0.18);
-  --text: #2f2418;
-  --muted: #695743;
+  --bg: #f3efe7;
+  --bg-strong: #e8dfcf;
+  --paper: rgba(255, 253, 248, 0.92);
+  --panel: rgba(255, 253, 248, 0.82);
+  --line: rgba(67, 57, 42, 0.16);
+  --text: #2d2922;
+  --muted: #6e6658;
   --accent: #0f766e;
   --accent-soft: rgba(15, 118, 110, 0.16);
   --patrilineal: #1f4b73;
@@ -14,8 +14,8 @@
   --house: #647a3f;
   --marriage: #b78033;
   --inheritance: #5f3d8f;
-  --radius: 18px;
-  --shadow: 0 18px 40px rgba(72, 49, 22, 0.12);
+  --radius: 12px;
+  --shadow: 0 14px 30px rgba(55, 45, 32, 0.1);
   --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
   --body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
@@ -30,9 +30,7 @@ body {
   font-family: var(--body);
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255, 244, 216, 0.95), transparent 30%),
-    radial-gradient(circle at right 10% top 18%, rgba(172, 121, 62, 0.15), transparent 20%),
-    linear-gradient(180deg, #f6efe1 0%, #ece0c8 38%, #e1d1b8 100%);
+    linear-gradient(180deg, #faf7f0 0%, #eee6d8 46%, #e4dac9 100%);
 }
 
 .shell {
@@ -71,13 +69,13 @@ body {
 .panel,
 .topbar,
 .canvas-panel {
-  border-radius: 24px;
+  border-radius: 16px;
 }
 
 .brand {
   padding: 22px 22px 18px;
   background:
-    linear-gradient(140deg, rgba(255, 250, 240, 0.96), rgba(239, 225, 198, 0.88)),
+    linear-gradient(140deg, rgba(255, 253, 248, 0.98), rgba(239, 231, 216, 0.9)),
     var(--panel);
 }
 
@@ -213,21 +211,21 @@ body {
 }
 
 .segment-button {
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.55);
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
   color: var(--muted);
 }
 
 .segment-button.active {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.94), rgba(29, 78, 216, 0.92));
+  background: rgba(15, 118, 110, 0.92);
   color: white;
-  box-shadow: 0 10px 24px rgba(24, 97, 118, 0.24);
+  box-shadow: 0 8px 18px rgba(24, 97, 118, 0.18);
 }
 
 .filter-chip {
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: 10px;
   border: 1px solid rgba(105, 87, 67, 0.16);
   background: rgba(255, 255, 255, 0.56);
   color: var(--text);
@@ -302,10 +300,10 @@ body {
 
 .tool-button,
 .ghost-button {
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.66);
 }
 
 .tool-button:disabled,
@@ -327,7 +325,7 @@ body {
   overflow: hidden;
   padding: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 251, 245, 0.9), rgba(250, 241, 225, 0.72)),
+    linear-gradient(180deg, rgba(255, 253, 249, 0.92), rgba(246, 239, 228, 0.78)),
     var(--panel);
 }
 
@@ -367,8 +365,8 @@ body {
   flex: 1 1 180px;
   min-width: 0;
   padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.58);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
   border: 1px solid rgba(105, 87, 67, 0.12);
 }
 
@@ -414,9 +412,9 @@ body {
   position: relative;
   height: 100%;
   min-height: 640px;
-  border-radius: 22px;
+  border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(219, 198, 167, 0.18), rgba(240, 233, 220, 0.2));
+  background: #f4eee3;
   border: 1px solid rgba(105, 87, 67, 0.14);
   cursor: grab;
 }
@@ -434,19 +432,37 @@ body {
   position: absolute;
   top: 14px;
   right: 14px;
-  width: min(360px, calc(100% - 28px));
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 252, 246, 0.9);
-  border: 1px solid rgba(105, 87, 67, 0.12);
-  box-shadow: 0 18px 32px rgba(72, 49, 22, 0.12);
+  width: min(320px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.94);
+  border: 1px solid rgba(71, 61, 43, 0.14);
+  box-shadow: 0 12px 28px rgba(55, 45, 32, 0.14);
   backdrop-filter: blur(10px);
 }
 
+.inspector-hero {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(246, 241, 232, 0.72);
+  border: 1px solid rgba(105, 87, 67, 0.1);
+}
+
+.inspector-hero strong,
 .canvas-focus-card strong {
   display: block;
   font-family: var(--display);
   font-size: 1.05rem;
+}
+
+.inspector-kicker {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .canvas-focus-card span {
@@ -458,9 +474,7 @@ body {
 }
 
 .canvas-card-section + .canvas-card-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(105, 87, 67, 0.12);
+  margin-top: 8px;
 }
 
 .area-editor,
@@ -468,6 +482,36 @@ body {
 .quick-relation {
   display: grid;
   gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(105, 87, 67, 0.1);
+}
+
+.canvas-card-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.canvas-card-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.canvas-card-section summary::after {
+  content: "展开";
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.canvas-card-section[open] summary::after {
+  content: "收起";
 }
 
 .area-editor-head {
@@ -491,11 +535,11 @@ body {
   width: 100%;
   min-width: 0;
   border: 1px solid rgba(105, 87, 67, 0.16);
-  border-radius: 10px;
-  padding: 8px 9px;
+  border-radius: 8px;
+  padding: 7px 8px;
   font: inherit;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .area-editor input[type="color"] {
@@ -511,10 +555,10 @@ body {
 
 .mini-button {
   border: 1px solid rgba(105, 87, 67, 0.12);
-  border-radius: 10px;
-  padding: 7px 9px;
+  border-radius: 8px;
+  padding: 6px 8px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
 }
 
@@ -723,8 +767,8 @@ body {
 
 .note-card {
   padding: 16px 18px;
-  border-radius: 20px;
-  background: rgba(255, 249, 240, 0.82);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.76);
   border: 1px solid rgba(105, 87, 67, 0.1);
 }
 
@@ -751,9 +795,9 @@ body {
 }
 
 .detail-hero {
-  padding: 16px;
-  border-radius: 18px;
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.88), rgba(232, 220, 202, 0.7));
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(105, 87, 67, 0.1);
 }
 
@@ -788,8 +832,8 @@ body {
   flex: 1 1 calc(50% - 8px);
   min-width: 130px;
   padding: 12px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
   border: 1px solid rgba(105, 87, 67, 0.1);
 }
 
@@ -809,8 +853,8 @@ body {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid rgba(105, 87, 67, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.56);
 }
 
 .member-graph svg {
@@ -835,8 +879,8 @@ body {
 }
 
 .member-link {
-  stroke: rgba(75, 85, 99, 0.62);
-  stroke-width: 2.3px;
+  stroke: rgba(80, 86, 91, 0.48);
+  stroke-width: 2px;
   stroke-linecap: round;
 }
 
@@ -851,8 +895,8 @@ body {
 }
 
 .member-node rect {
-  fill: rgba(255, 250, 242, 0.96);
-  stroke: rgba(105, 87, 67, 0.2);
+  fill: rgba(255, 253, 248, 0.98);
+  stroke: rgba(105, 87, 67, 0.18);
 }
 
 .member-node text {
@@ -903,28 +947,28 @@ body {
 }
 
 .canvas-area .area-main {
-  opacity: 0.26;
-  stroke: rgba(74, 58, 36, 0.34);
-  stroke-width: 2px;
-  stroke-dasharray: 10 8;
+  opacity: 0.16;
+  stroke: rgba(74, 58, 36, 0.28);
+  stroke-width: 1.5px;
+  stroke-dasharray: 8 8;
   transition: opacity 160ms ease, stroke 160ms ease;
 }
 
 .canvas-area:hover .area-main {
-  opacity: 0.36;
-  stroke: rgba(74, 58, 36, 0.52);
+  opacity: 0.24;
+  stroke: rgba(74, 58, 36, 0.46);
 }
 
 .canvas-area.selected .area-main {
-  opacity: 0.4;
-  stroke: rgba(95, 61, 143, 0.75);
-  stroke-width: 3px;
+  opacity: 0.28;
+  stroke: rgba(95, 61, 143, 0.72);
+  stroke-width: 2.5px;
 }
 
 .area-title {
   fill: var(--text);
   font-family: var(--display);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   paint-order: stroke;
   stroke: rgba(255, 251, 244, 0.82);
@@ -960,22 +1004,22 @@ body {
 }
 
 .village-node rect.main {
-  fill: rgba(255, 250, 242, 0.92);
-  stroke: rgba(105, 87, 67, 0.22);
-  stroke-width: 2px;
+  fill: rgba(255, 253, 248, 0.94);
+  stroke: rgba(72, 61, 45, 0.2);
+  stroke-width: 1.5px;
   transition: stroke 160ms ease, fill 160ms ease, filter 160ms ease;
 }
 
 .village-node:hover rect.main {
   stroke: rgba(15, 118, 110, 0.42);
-  filter: drop-shadow(0 8px 18px rgba(72, 49, 22, 0.12));
+  filter: drop-shadow(0 6px 12px rgba(72, 49, 22, 0.1));
 }
 
 .village-node.selected rect.main {
   stroke: rgba(95, 61, 143, 0.9);
-  stroke-width: 3px;
+  stroke-width: 2.5px;
   fill: rgba(255, 255, 255, 0.98);
-  filter: drop-shadow(0 18px 30px rgba(50, 80, 70, 0.18));
+  filter: drop-shadow(0 10px 22px rgba(50, 80, 70, 0.16));
 }
 
 .village-node.related rect.main {

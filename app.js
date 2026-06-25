@@ -1724,17 +1724,16 @@ function renderCanvasFocusCard() {
   if (state.mode === "house") {
     const selectedArea = data.areas.find((area) => area.id === state.selectedAreaId) ?? data.areas[0];
     dom.canvasFocusCard.innerHTML = `
-      <div class="canvas-card-section">
+      <div class="inspector-hero">
+        <span class="inspector-kicker">当前家屋</span>
         <strong>${selected.name}</strong>
-        <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员</span>
-        <span>${selected.pattern}</span>
-        <span>当前画布显示与这一户直接相关的 ${relationCount} 条关系</span>
+        <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员 · ${relationCount} 条直接关系</span>
       </div>
-      <div class="canvas-card-section area-editor">
-        <div class="area-editor-head">
-          <strong>画布区域</strong>
+      <details class="canvas-card-section area-editor" open>
+        <summary>
+          <span>画布区域</span>
           <button class="mini-button" type="button" data-area-action="add">新增</button>
-        </div>
+        </summary>
         ${
           selectedArea
             ? `
@@ -1768,7 +1767,7 @@ function renderCanvasFocusCard() {
             `
             : `<span>还没有区域。点击“新增”创建一个区域。</span>`
         }
-      </div>
+      </details>
       ${renderRelationEditorMarkup(selectedRelation)}
       ${renderQuickRelationFormMarkup(selected)}
     `;
@@ -1782,10 +1781,12 @@ function renderCanvasFocusCard() {
     const birthHouse = getHouseholdById(selected.birthHouseId);
     const residenceHouse = getHouseholdById(selected.residenceHouseId);
     dom.canvasFocusCard.innerHTML = `
-      <strong>${selected.name}</strong>
-      <span>${selected.focusLabel} · ${selected.age} 岁 · ${selected.role}</span>
-      <span>生于 ${birthHouse?.shortName ?? "-"} · 居于 ${residenceHouse?.shortName ?? "-"}</span>
-      <span>当前画布显示与她直接相关的 ${relationCount} 条母系关系</span>
+      <div class="inspector-hero">
+        <span class="inspector-kicker">当前人物</span>
+        <strong>${selected.name}</strong>
+        <span>${selected.focusLabel} · ${selected.age} 岁 · ${selected.role}</span>
+        <span>生于 ${birthHouse?.shortName ?? "-"} · 居于 ${residenceHouse?.shortName ?? "-"} · ${relationCount} 条关系</span>
+      </div>
       ${renderRelationEditorMarkup(selectedRelation)}
     `;
     bindRelationEditor(selectedRelation);
@@ -1793,10 +1794,11 @@ function renderCanvasFocusCard() {
   }
 
   dom.canvasFocusCard.innerHTML = `
-    <strong>${selected.name}</strong>
-    <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员</span>
-    <span>第 ${selected.generation} 代 · 父系链已高亮</span>
-    <span>当前画布显示与这一户直接相关的 ${relationCount} 条关系</span>
+    <div class="inspector-hero">
+      <span class="inspector-kicker">当前父系节点</span>
+      <strong>${selected.name}</strong>
+      <span>${selected.branch} · 第 ${selected.generation} 代 · ${selected.memberCount} 位成员 · ${relationCount} 条关系</span>
+    </div>
     ${renderRelationEditorMarkup(selectedRelation)}
     ${renderQuickRelationFormMarkup(selected)}
   `;
@@ -1812,15 +1814,15 @@ function renderQuickRelationFormMarkup(selected) {
     .map((household) => `<option value="${household.id}">${household.shortName} · ${household.branch}</option>`)
     .join("");
   return `
-    <div class="canvas-card-section quick-relation">
-      <strong>快速添加关系</strong>
+    <details class="canvas-card-section quick-relation">
+      <summary>快速添加关系</summary>
       <select data-quick-relation="target">${options}</select>
       <select data-quick-relation="type">
         ${allowedTypes.map((type) => `<option value="${type}">${relationTypes[type].label}</option>`).join("")}
       </select>
       <textarea data-quick-relation="note" rows="2" placeholder="说明 / 证据"></textarea>
       <button class="mini-button" type="button" data-quick-relation-action="add">添加关系</button>
-    </div>
+    </details>
   `;
 }
 
@@ -1853,8 +1855,8 @@ function renderRelationEditorMarkup(relation) {
   const editableTypes = ["house", "marriage", "inheritance", "adoption", "patrilineal"];
   const typeOptions = isEditable || editableTypes.includes(relation.type) ? editableTypes : [relation.type];
   return `
-    <div class="canvas-card-section relation-editor">
-      <strong>关系线</strong>
+    <details class="canvas-card-section relation-editor" open>
+      <summary>关系线</summary>
       <span>${from?.shortName ?? from?.name ?? relation.from} → ${to?.shortName ?? to?.name ?? relation.to}</span>
       <label>
         <span>类型</span>
@@ -1873,7 +1875,7 @@ function renderRelationEditorMarkup(relation) {
           ? `<button class="mini-button danger" type="button" data-relation-action="delete">删除关系</button>`
           : `<span>母系关系由人物资料自动生成，暂不直接编辑。</span>`
       }
-    </div>
+    </details>
   `;
 }
 
