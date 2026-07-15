@@ -424,7 +424,25 @@ function cloneInitialProject(project) {
   return JSON.parse(JSON.stringify(project));
 }
 
-const data = window.KINMAP_IMPORTED_PROJECT ? cloneInitialProject(window.KINMAP_IMPORTED_PROJECT) : createVillageData();
+const projectCatalog = [
+  ...(window.KINMAP_IMPORTED_PROJECT
+    ? [
+        {
+          id: "liuxiang",
+          label: "六巷村家屋制项目",
+          create: () => cloneInitialProject(window.KINMAP_IMPORTED_PROJECT),
+        },
+      ]
+    : []),
+  {
+    id: "demo",
+    label: "云岭村试验项目",
+    create: createVillageData,
+  },
+];
+
+let currentProjectId = projectCatalog[0].id;
+const data = projectCatalog[0].create();
 
 function getLaneNames() {
   const names = data.households.map((household) => household.lane).filter(Boolean);
@@ -434,6 +452,14 @@ function getLaneNames() {
 function getBranchNames() {
   const names = data.households.map((household) => household.branch).filter(Boolean);
   return Array.from(new Set(names.length ? names : defaultBranchNames));
+}
+
+function getProjectDefinition(projectId = currentProjectId) {
+  return projectCatalog.find((project) => project.id === projectId) ?? projectCatalog[0];
+}
+
+function getStorageKey(projectId = currentProjectId) {
+  return `${STORAGE_KEY_PREFIX}-${projectId}`;
 }
 
 const state = {
@@ -471,7 +497,7 @@ const CANVAS_VIEW = {
   height: 900,
 };
 
-const STORAGE_KEY = "kinmap-project-state-v3-liuxiang-house-system";
+const STORAGE_KEY_PREFIX = "kinmap-project-state-v4";
 
 const dom = {
   statGrid: document.querySelector("#statGrid"),
@@ -479,6 +505,7 @@ const dom = {
   layerFilters: document.querySelector("#layerFilters"),
   householdList: document.querySelector("#householdList"),
   householdCount: document.querySelector("#householdCount"),
+  projectSwitcher: document.querySelector("#projectSwitcher"),
   projectLocation: document.querySelector("#projectLocation"),
   projectScope: document.querySelector("#projectScope"),
   projectSummary: document.querySelector("#projectSummary"),
@@ -536,6 +563,9 @@ function countAllPeople() {
 }
 
 function updateProjectCard() {
+  if (dom.projectSwitcher) {
+    dom.projectSwitcher.value = currentProjectId;
+  }
   dom.projectLocation.textContent = data.project.location;
   dom.projectSummary.textContent = data.project.summary;
   dom.projectScope.textContent = `${data.households.length} 户 / ${countAllPeople()} 人`;
@@ -578,7 +608,7 @@ function applySerializedState(payload) {
 }
 
 function saveToLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeAppState()));
+  localStorage.setItem(getStorageKey(), JSON.stringify(serializeAppState()));
 }
 
 function cloneSerializedState() {
@@ -623,10 +653,45 @@ function updateHistoryButtons() {
 }
 
 function loadFromLocal() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = localStorage.getItem(getStorageKey());
   if (!raw) return false;
   applySerializedState(JSON.parse(raw));
   return true;
+}
+
+function renderProjectSwitcher() {
+  if (!dom.projectSwitcher) return;
+  dom.projectSwitcher.innerHTML = projectCatalog
+    .map((project) => `<option value="${project.id}">${project.label}</option>`)
+    .join("");
+  dom.projectSwitcher.value = currentProjectId;
+}
+
+function resetTransientState() {
+  state.selectedEntityId = getDefaultSelectionForMode(state.mode);
+  state.activeLayers = new Set(getCurrentMode().types);
+  state.query = "";
+  state.selectedAreaId = data.areas[0]?.id ?? null;
+  state.selectedRelationId = null;
+  state.historyPast = [];
+  state.historyFuture = [];
+  state.pendingHistory = null;
+  state.viewport = { scale: 1, x: 0, y: 0 };
+  if (dom.searchInput) dom.searchInput.value = "";
+}
+
+function switchProject(projectId) {
+  if (!projectId || projectId === currentProjectId) return;
+  saveToLocal();
+  const project = getProjectDefinition(projectId);
+  currentProjectId = project.id;
+  applySerializedState(project.create());
+  loadFromLocal();
+  resetTransientState();
+  syncProjectForm();
+  populateHouseholdSelects();
+  renderProjectSwitcher();
+  render();
 }
 
 function encodeSharePayload(payload) {
@@ -2509,6 +2574,9 @@ function bindCanvasInteractions() {
 function bindControls() {
   dom.undoBtn.addEventListener("click", undoLastChange);
   dom.redoBtn.addEventListener("click", redoLastChange);
+  dom.projectSwitcher.addEventListener("change", (event) => {
+    switchProject(event.target.value);
+  });
   dom.openProjectBtn.addEventListener("click", () => openModal("project"));
   dom.openEntryBtn.addEventListener("click", () => openModal("entry"));
   dom.openShareBtn.addEventListener("click", () => openModal("share"));
@@ -2585,6 +2653,7 @@ function render() {
   renderCanvasFocusCard();
 }
 
+renderProjectSwitcher();
 maybeLoadFromHash() || loadFromLocal();
 bindControls();
 bindCanvasInteractions();
