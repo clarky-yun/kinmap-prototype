@@ -334,6 +334,29 @@ body {
   justify-content: flex-end;
 }
 
+.top-project-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(105, 87, 67, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.top-project-switcher select {
+  min-width: 150px;
+  max-width: 190px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
 .tool-button,
 .ghost-button {
   padding: 9px 12px;

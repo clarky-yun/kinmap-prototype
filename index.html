@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KinMap Village Prototype</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260715-project-switcher-2" />
   </head>
   <body>
     <div class="shell">
@@ -77,6 +77,10 @@
             <h2 id="viewTitle">家屋网络总览</h2>
           </div>
           <div class="toolbar">
+            <label class="top-project-switcher">
+              <span>项目</span>
+              <select id="topProjectSwitcher" aria-label="切换项目"></select>
+            </label>
             <button id="undoBtn" class="tool-button" type="button">撤销</button>
             <button id="redoBtn" class="tool-button" type="button">重做</button>
             <button id="fitViewBtn" class="tool-button" type="button">重置视图</button>
@@ -356,7 +360,7 @@
       </section>
     </div>
 
-    <script src="./liuxiang-project.js"></script>
-    <script src="./app.js"></script>
+    <script src="./liuxiang-project.js?v=20260715-project-switcher-2"></script>
+    <script src="./app.js?v=20260715-project-switcher-2"></script>
   </body>
 </html>

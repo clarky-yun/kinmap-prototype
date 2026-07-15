@@ -506,6 +506,7 @@ const dom = {
   householdList: document.querySelector("#householdList"),
   householdCount: document.querySelector("#householdCount"),
   projectSwitcher: document.querySelector("#projectSwitcher"),
+  topProjectSwitcher: document.querySelector("#topProjectSwitcher"),
   projectLocation: document.querySelector("#projectLocation"),
   projectScope: document.querySelector("#projectScope"),
   projectSummary: document.querySelector("#projectSummary"),
@@ -563,9 +564,9 @@ function countAllPeople() {
 }
 
 function updateProjectCard() {
-  if (dom.projectSwitcher) {
-    dom.projectSwitcher.value = currentProjectId;
-  }
+  [dom.projectSwitcher, dom.topProjectSwitcher].filter(Boolean).forEach((switcher) => {
+    switcher.value = currentProjectId;
+  });
   dom.projectLocation.textContent = data.project.location;
   dom.projectSummary.textContent = data.project.summary;
   dom.projectScope.textContent = `${data.households.length} 户 / ${countAllPeople()} 人`;
@@ -660,11 +661,13 @@ function loadFromLocal() {
 }
 
 function renderProjectSwitcher() {
-  if (!dom.projectSwitcher) return;
-  dom.projectSwitcher.innerHTML = projectCatalog
+  const options = projectCatalog
     .map((project) => `<option value="${project.id}">${project.label}</option>`)
     .join("");
-  dom.projectSwitcher.value = currentProjectId;
+  [dom.projectSwitcher, dom.topProjectSwitcher].filter(Boolean).forEach((switcher) => {
+    switcher.innerHTML = options;
+    switcher.value = currentProjectId;
+  });
 }
 
 function resetTransientState() {
@@ -2574,8 +2577,10 @@ function bindCanvasInteractions() {
 function bindControls() {
   dom.undoBtn.addEventListener("click", undoLastChange);
   dom.redoBtn.addEventListener("click", redoLastChange);
-  dom.projectSwitcher.addEventListener("change", (event) => {
-    switchProject(event.target.value);
+  [dom.projectSwitcher, dom.topProjectSwitcher].filter(Boolean).forEach((switcher) => {
+    switcher.addEventListener("change", (event) => {
+      switchProject(event.target.value);
+    });
   });
   dom.openProjectBtn.addEventListener("click", () => openModal("project"));
   dom.openEntryBtn.addEventListener("click", () => openModal("entry"));
