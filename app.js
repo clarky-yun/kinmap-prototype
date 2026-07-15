@@ -471,7 +471,7 @@ const CANVAS_VIEW = {
   height: 900,
 };
 
-const STORAGE_KEY = "kinmap-project-state-v2-liuxiang";
+const STORAGE_KEY = "kinmap-project-state-v3-liuxiang-house-system";
 
 const dom = {
   statGrid: document.querySelector("#statGrid"),
