@@ -42,8 +42,8 @@ const relationTypes = {
   uncleCare: { label: "舅甥照护", color: "#4338ca", dash: "10 6" },
 };
 
-const laneNames = ["上寨", "中寨", "下寨"];
-const branchNames = ["长房", "二房", "三房", "旁支"];
+const defaultLaneNames = ["上寨", "中寨", "下寨"];
+const defaultBranchNames = ["长房", "二房", "三房", "旁支"];
 const housePatterns = ["分家户", "并居户", "迁入户", "守屋户"];
 const surnames = ["木", "和", "李", "周", "杨", "赵"];
 
@@ -65,7 +65,7 @@ function createVillageData() {
     const cluster = Math.floor(i / 18);
     const row = Math.floor((i % 18) / 3);
     const col = i % 3;
-    const branch = branchNames[(i + cluster) % branchNames.length];
+    const branch = defaultBranchNames[(i + cluster) % defaultBranchNames.length];
     const surname = surnames[(cluster + col) % surnames.length];
     const members = [];
     const generation = row + 1;
@@ -101,7 +101,7 @@ function createVillageData() {
       id: `H${i + 1}`,
       name: `${surname}家屋 ${baseCode}`,
       shortName: `${surname}${baseCode}`,
-      lane: laneNames[cluster],
+      lane: defaultLaneNames[cluster],
       branch,
       pattern: housePatterns[i % housePatterns.length],
       region: cluster === 0 ? "北坡" : cluster === 1 ? "河谷" : "梯田边",
@@ -115,10 +115,10 @@ function createVillageData() {
       x: 180 + col * 420 + (row % 2) * 28 + cluster * 60,
       y: 140 + row * 130 + cluster * 36,
       members,
-      tags: [branch, laneNames[cluster], housePatterns[i % housePatterns.length]],
+      tags: [branch, defaultLaneNames[cluster], housePatterns[i % housePatterns.length]],
       keyHouse: i % 9 === 0,
       generation,
-      branchIndex: branchNames.indexOf(branch),
+      branchIndex: defaultBranchNames.indexOf(branch),
       cluster,
       patrilineOriginId: null,
       patriarchId: father.id,
@@ -263,101 +263,125 @@ function buildMaternalData(households) {
   let relationIndex = 1;
 
   households.forEach((household, index) => {
-    const mother = household.members.find((member) => member.id === household.motherId);
-    const grandmother = household.members.find((member) => member.id === household.grandmotherId);
-    const daughter = household.members.find((member) => household.daughterIds.includes(member.id)) ?? mother;
+    const mother =
+      household.members.find((member) => member.id === household.motherId) ??
+      household.members.find((member) => member.role.includes("母") || member.role.includes("配偶") || member.role.includes("妻"));
+    const grandmother =
+      household.members.find((member) => member.id === household.grandmotherId) ??
+      household.members.find((member) => member.role.includes("祖"));
+    const daughter =
+      household.members.find((member) => household.daughterIds.includes(member.id)) ??
+      household.members.find((member) => member.gender === "女" && (member.role.includes("女") || member.role.includes("孙")));
+    if (!mother && !grandmother && !daughter) return;
+    const focusMember = mother ?? grandmother ?? daughter;
     const externalHouse = households[(index + 18) % households.length];
     const supportHouse = households[(index + 6) % households.length];
     const uncleHouse = households[(index + 9) % households.length];
 
-    const elderNode = makePersonNode({
-      label: `${grandmother.name}`,
-      kind: "grandmother",
-      sourceMember: grandmother,
-      birthHouseId: household.id,
-      residenceHouseId: household.id,
-      focusLabel: "外婆线",
-      x: 180 + (index % 6) * 230,
-      y: 110 + Math.floor(index / 6) * 210,
-    });
+    const elderNode = grandmother
+      ? makePersonNode({
+          label: `${grandmother.name}`,
+          kind: "grandmother",
+          sourceMember: grandmother,
+          birthHouseId: household.id,
+          residenceHouseId: household.id,
+          focusLabel: "祖母/外婆线索",
+          x: 180 + (index % 6) * 230,
+          y: 110 + Math.floor(index / 6) * 210,
+        })
+      : null;
     const motherNode = makePersonNode({
-      label: `${mother.name}`,
+      label: `${focusMember.name}`,
       kind: "mother",
-      sourceMember: mother,
+      sourceMember: focusMember,
       birthHouseId: externalHouse.id,
       residenceHouseId: household.id,
-      focusLabel: "婚入者",
-      x: elderNode.x + 78,
-      y: elderNode.y + 78,
+      focusLabel: mother ? "母亲/婚入线索" : "女性登记节点",
+      x: (elderNode?.x ?? 180 + (index % 6) * 230) + 78,
+      y: (elderNode?.y ?? 110 + Math.floor(index / 6) * 210) + 78,
     });
-    const daughterNode = makePersonNode({
-      label: `${daughter.name}`,
-      kind: "daughter",
-      sourceMember: daughter,
-      birthHouseId: household.id,
-      residenceHouseId: supportHouse.id,
-      focusLabel: "婚出候选",
-      x: motherNode.x + 78,
-      y: motherNode.y + 82,
-    });
-    const sonNode = makePersonNode({
-      label: `${household.shortName}子嗣`,
-      kind: "child",
-      sourceMember: household.members.find((member) => household.sonIds.includes(member.id)) ?? household.members[4],
-      birthHouseId: household.id,
-      residenceHouseId: household.id,
-      focusLabel: "子女照护",
-      x: motherNode.x - 98,
-      y: motherNode.y + 84,
-    });
+    const daughterNode =
+      daughter && daughter.id !== focusMember.id
+        ? makePersonNode({
+            label: `${daughter.name}`,
+            kind: "daughter",
+            sourceMember: daughter,
+            birthHouseId: household.id,
+            residenceHouseId: supportHouse.id,
+            focusLabel: "女儿/孙女线索",
+            x: motherNode.x + 78,
+            y: motherNode.y + 82,
+          })
+        : null;
+    const childSource = household.members.find((member) => household.sonIds.includes(member.id)) ?? household.members.find((member) => member.role.includes("子"));
+    const sonNode = childSource
+      ? makePersonNode({
+          label: `${childSource.name}`,
+          kind: "child",
+          sourceMember: childSource,
+          birthHouseId: household.id,
+          residenceHouseId: household.id,
+          focusLabel: "子女照护",
+          x: motherNode.x - 98,
+          y: motherNode.y + 84,
+        })
+      : null;
 
-    people.push(elderNode, motherNode, daughterNode, sonNode);
+    [elderNode, motherNode, daughterNode, sonNode].filter(Boolean).forEach((node) => people.push(node));
     motherNodes.push(motherNode);
 
-    relations.push(
-      {
+    if (elderNode) {
+      relations.push({
         id: `M${relationIndex++}`,
         from: elderNode.id,
         to: motherNode.id,
         type: "motherChild",
-        note: "外婆到母亲",
-      },
-      {
+        note: "公示表登记出的祖母/母亲线索，需访谈核对。",
+      });
+    }
+    if (daughterNode) {
+      relations.push({
         id: `M${relationIndex++}`,
         from: motherNode.id,
         to: daughterNode.id,
         type: "motherChild",
-        note: "母亲到女儿",
-      },
-      {
+        note: "公示表登记出的女性代际线索。",
+      });
+    }
+    if (sonNode) {
+      relations.push({
         id: `M${relationIndex++}`,
         from: motherNode.id,
         to: sonNode.id,
         type: "motherChild",
-        note: "母亲到子女",
-      },
-      {
+        note: "公示表登记出的母子/照护线索。",
+      });
+    }
+    if (daughterNode) {
+      relations.push({
         id: `M${relationIndex++}`,
         from: motherNode.id,
         to: daughterNode.id,
         type: "marriageMove",
-        note: `婚后流向 ${supportHouse.shortName}`,
-      },
-      {
+        note: `可能的婚居流向占位：${supportHouse.shortName}，需访谈核对。`,
+      });
+    }
+    if (elderNode && sonNode) {
+      relations.push({
         id: `M${relationIndex++}`,
         from: elderNode.id,
         to: sonNode.id,
         type: "uncleCare",
-        note: `舅家来自 ${uncleHouse.shortName}`,
-      }
-    );
+        note: `舅甥/外家照护占位：${uncleHouse.shortName}，需访谈核对。`,
+      });
+    }
 
-    relations.push({
+    if (elderNode) relations.push({
       id: `M${relationIndex++}`,
       from: motherNode.id,
       to: elderNode.id,
       type: "support",
-      note: `娘家支持来自 ${externalHouse.shortName}`,
+      note: `娘家支持占位：${externalHouse.shortName}，需访谈核对。`,
     });
 
     function makePersonNode({ label, kind, sourceMember, birthHouseId, residenceHouseId, focusLabel, x, y }) {
@@ -396,7 +420,21 @@ function buildMaternalData(households) {
   return { people, relations };
 }
 
-const data = createVillageData();
+function cloneInitialProject(project) {
+  return JSON.parse(JSON.stringify(project));
+}
+
+const data = window.KINMAP_IMPORTED_PROJECT ? cloneInitialProject(window.KINMAP_IMPORTED_PROJECT) : createVillageData();
+
+function getLaneNames() {
+  const names = data.households.map((household) => household.lane).filter(Boolean);
+  return Array.from(new Set(names.length ? names : defaultLaneNames));
+}
+
+function getBranchNames() {
+  const names = data.households.map((household) => household.branch).filter(Boolean);
+  return Array.from(new Set(names.length ? names : defaultBranchNames));
+}
 
 const state = {
   mode: "house",
@@ -433,7 +471,7 @@ const CANVAS_VIEW = {
   height: 900,
 };
 
-const STORAGE_KEY = "kinmap-project-state-v1";
+const STORAGE_KEY = "kinmap-project-state-v2-liuxiang";
 
 const dom = {
   statGrid: document.querySelector("#statGrid"),
@@ -999,7 +1037,7 @@ function renderDetailPane() {
     dom.detailPane.innerHTML = `
       <div class="detail-hero">
         <h3 class="detail-title">${selected.name}</h3>
-        <p class="detail-subtitle">${selected.focusLabel} · ${selected.age} 岁 · ${selected.role}</p>
+        <p class="detail-subtitle">${selected.focusLabel} · ${formatAge(selected.age)} · ${selected.role}</p>
         <p class="detail-copy">${selected.note}</p>
       </div>
       <div class="tag-row">
@@ -1027,6 +1065,8 @@ function renderDetailPane() {
   const keyMembers = selected.members.slice(0, 6);
   const patrilineLine = buildPatrilineLine(selected);
   const memberGraph = renderHouseholdMemberGraph(selected);
+  const landSummary = selected.landSummary;
+  const landParcels = Array.isArray(selected.landParcels) ? selected.landParcels : [];
   dom.selectedBadge.textContent = selected.shortName;
 
   dom.detailPane.innerHTML = `
@@ -1074,7 +1114,7 @@ function renderDetailPane() {
             (member) => `
               <article class="member-card">
                 <h4 class="member-name">${member.name}</h4>
-                <span class="member-meta">${member.gender} · ${member.age} 岁 · ${member.role} · ${member.status ?? "在户"}</span>
+                <span class="member-meta">${member.gender} · ${formatAge(member.age)} · ${member.role} · ${member.status ?? "在户"}</span>
                 <p>${member.note}</p>
               </article>
             `
@@ -1082,6 +1122,37 @@ function renderDetailPane() {
           .join("")}
       </div>
     </div>
+
+    ${
+      landParcels.length
+        ? `
+          <div>
+            <span class="meta-label">承包地块</span>
+            <div class="land-summary">
+              <strong>${landSummary?.plotCount ?? landParcels.length} 块</strong>
+              <span>${landSummary?.totalAreaMu ?? "-"} 亩</span>
+            </div>
+            <div class="land-list">
+              ${landParcels
+                .slice(0, 8)
+                .map(
+                  (parcel) => `
+                    <article class="land-item">
+                      <div>
+                        <strong>${parcel.name}</strong>
+                        <span>${parcel.code ? `编码 ${parcel.code}` : "无编码"}</span>
+                      </div>
+                      <span>${parcel.area ?? "-"} 亩</span>
+                      <p>东 ${parcel.east || "-"} · 南 ${parcel.south || "-"} · 西 ${parcel.west || "-"} · 北 ${parcel.north || "-"}</p>
+                    </article>
+                  `
+                )
+                .join("")}
+            </div>
+          </div>
+        `
+        : ""
+    }
 
     <div>
       <span class="meta-label">户内成员关系</span>
@@ -1219,7 +1290,12 @@ function shortenText(text, maxLength) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 }
 
+function formatAge(age) {
+  return Number.isFinite(Number(age)) && Number(age) > 0 ? `${age} 岁` : "年龄未录";
+}
+
 function buildHouseMapModel() {
+  const laneNames = getLaneNames();
   const grouped = new Map(laneNames.map((lane) => [lane, []]));
   getFilteredEntities()
     .slice()
@@ -1273,6 +1349,7 @@ function buildHouseMapModel() {
 }
 
 function buildPatrilinealMapModel() {
+  const branchNames = getBranchNames();
   const bucketed = new Map();
   getFilteredEntities().forEach((household) => {
     const key = `${household.branch}-${household.generation}`;
@@ -1308,7 +1385,7 @@ function buildPatrilinealMapModel() {
   return {
     entities,
     relations,
-    bounds: { width: 3250, height: 1740 },
+    bounds: { width: Math.max(1800, 120 + branchNames.length * 760), height: 1740 },
     backgroundMarkup: branchNames
       .map((branch, branchIndex) => {
         const x = 70 + branchIndex * 760;
@@ -1611,7 +1688,7 @@ function renderMatrilinealNode(entity, isSelected, isRelated, relationCount) {
       <rect class="main" x="0" y="0" width="200" height="116" rx="50" />
       <rect class="node-accent" x="12" y="12" width="176" height="10" rx="999" style="fill:${accentByKind[entity.kind] ?? relationTypes.matrilineal.color};" />
       <text class="node-title" x="18" y="42" style="font-size:24px;">${entity.name}</text>
-      <text class="node-meta" x="18" y="64">${entity.focusLabel} · ${entity.age} 岁</text>
+      <text class="node-meta" x="18" y="64">${entity.focusLabel} · ${formatAge(entity.age)}</text>
       <text class="node-mini" x="18" y="88">生于 ${birthHouse?.shortName ?? "-"} · 居于 ${residenceHouse?.shortName ?? "-"}</text>
       <text class="node-relation-count" x="182" y="36" text-anchor="end">${relationCount} 条线</text>
     </g>
@@ -2261,8 +2338,8 @@ function handleHouseholdSubmit(event) {
     tags: [branch, lane, pattern],
     keyHouse: false,
     generation,
-    branchIndex: branchNames.indexOf(branch),
-    cluster: laneNames.indexOf(lane),
+    branchIndex: getBranchNames().indexOf(branch),
+    cluster: getLaneNames().indexOf(lane),
     patrilineOriginId: null,
     patriarchId: null,
     grandmotherId: null,
