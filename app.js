@@ -469,7 +469,7 @@ const state = {
   query: "",
   showNames: false,
   suppressNextNodeClick: false,
-  selectedAreaId: data.areas[0]?.id ?? null,
+  selectedAreaId: null,
   selectedRelationId: null,
   historyPast: [],
   historyFuture: [],
@@ -604,7 +604,7 @@ function applySerializedState(payload) {
   data.maternalPositions = payload.maternalPositions && typeof payload.maternalPositions === "object" ? payload.maternalPositions : {};
   refreshDerivedData();
   state.selectedEntityId = getDefaultSelectionForMode(state.mode);
-  state.selectedAreaId = data.areas[0]?.id ?? null;
+  state.selectedAreaId = null;
   state.selectedRelationId = null;
 }
 
@@ -674,7 +674,7 @@ function resetTransientState() {
   state.selectedEntityId = getDefaultSelectionForMode(state.mode);
   state.activeLayers = new Set(getCurrentMode().types);
   state.query = "";
-  state.selectedAreaId = data.areas[0]?.id ?? null;
+  state.selectedAreaId = null;
   state.selectedRelationId = null;
   state.historyPast = [];
   state.historyFuture = [];
@@ -1730,9 +1730,9 @@ function renderHouseholdNode(entity, isSelected, isRelated, relationCount) {
 
   return `
     <g class="village-node ${isSelected ? "selected" : ""} ${isRelated ? "related" : ""}" data-node-id="${entity.id}" transform="translate(${entity.x}, ${entity.y})">
-      <rect class="node-hitbox" x="0" y="0" width="220" height="128" rx="22" />
-      <rect class="main" x="0" y="0" width="220" height="128" rx="22" />
-      <rect class="node-accent" x="0" y="0" width="220" height="12" rx="22" style="fill:${accent};" />
+      <rect class="node-hitbox" x="0" y="0" width="220" height="128" rx="8" />
+      <rect class="main" x="0" y="0" width="220" height="128" rx="8" />
+      <rect class="node-accent" x="0" y="0" width="220" height="12" rx="4" style="fill:${accent};" />
       <text class="node-title" x="18" y="38">${entity.shortName}</text>
       <text class="node-meta" x="18" y="62">${entity.branch} · ${entity.lane}</text>
       <text class="node-relation-count" x="202" y="26" text-anchor="end">${relationCount} 条联系</text>
@@ -1752,8 +1752,8 @@ function renderMatrilinealNode(entity, isSelected, isRelated, relationCount) {
   const residenceHouse = getHouseholdById(entity.residenceHouseId);
   return `
     <g class="village-node ${isSelected ? "selected" : ""} ${isRelated ? "related" : ""}" data-node-id="${entity.id}" transform="translate(${entity.x}, ${entity.y})">
-      <rect class="node-hitbox" x="0" y="0" width="200" height="116" rx="50" />
-      <rect class="main" x="0" y="0" width="200" height="116" rx="50" />
+      <rect class="node-hitbox" x="0" y="0" width="200" height="116" rx="18" />
+      <rect class="main" x="0" y="0" width="200" height="116" rx="18" />
       <rect class="node-accent" x="12" y="12" width="176" height="10" rx="999" style="fill:${accentByKind[entity.kind] ?? relationTypes.matrilineal.color};" />
       <text class="node-title" x="18" y="42" style="font-size:24px;">${entity.name}</text>
       <text class="node-meta" x="18" y="64">${entity.focusLabel} · ${formatAge(entity.age)}</text>
@@ -1867,14 +1867,14 @@ function renderCanvasFocusCard() {
   const selectedRelation = state.selectedRelationId ? getRelationById(state.selectedRelationId) : null;
 
   if (state.mode === "house") {
-    const selectedArea = data.areas.find((area) => area.id === state.selectedAreaId) ?? data.areas[0];
+    const selectedArea = state.selectedAreaId ? data.areas.find((area) => area.id === state.selectedAreaId) : null;
     dom.canvasFocusCard.innerHTML = `
       <div class="inspector-hero">
         <span class="inspector-kicker">当前家屋</span>
         <strong>${selected.name}</strong>
         <span>${selected.branch} · ${selected.lane} · ${selected.memberCount} 位成员 · ${relationCount} 条直接关系</span>
       </div>
-      <details class="canvas-card-section area-editor" open>
+      <details class="canvas-card-section area-editor" ${selectedArea ? "open" : ""}>
         <summary>
           <span>画布区域</span>
           <button class="mini-button" type="button" data-area-action="add">新增</button>
@@ -1910,7 +1910,7 @@ function renderCanvasFocusCard() {
               </div>
               <button class="mini-button danger" type="button" data-area-action="delete">删除区域</button>
             `
-            : `<span>还没有区域。点击“新增”创建一个区域。</span>`
+            : `<span>点击画布上的区域后可编辑名称、颜色和尺寸。</span>`
         }
       </details>
       ${renderRelationEditorMarkup(selectedRelation)}
@@ -2103,7 +2103,7 @@ function updateAreaField(area, field, value) {
 
 function deleteArea(areaId) {
   data.areas = data.areas.filter((area) => area.id !== areaId);
-  state.selectedAreaId = data.areas[0]?.id ?? null;
+  state.selectedAreaId = null;
 }
 
 function clampScale(scale) {
